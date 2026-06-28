@@ -10,6 +10,7 @@ from apps.auth.schemas import (
     RegisterRequest,
     TokenResponse,
     UserResponse,
+    UpdatePreferencesRequest,
 )
 from apps.auth.service import (
     authenticate_user,
@@ -58,3 +59,15 @@ def delete_me(
 ):
     deactivate_user(db, current_user)
     return {"detail": "Account deactivated"}
+
+
+@router.put("/me/preferences", response_model=UserResponse)
+def update_preferences(
+    data: UpdatePreferencesRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    current_user.preferences = data.preferences
+    db.commit()
+    db.refresh(current_user)
+    return current_user

@@ -11,6 +11,7 @@ from agent.models import ChatSession, ChatMessage
 from agent.tools import TOOLS
 from agent.handlers import handle_tool_call
 from agent.prompts import ROUTER_PROMPT, BASE_RULES, ROLE_PROMPTS
+from apps.auth.models import User
 
 def classify_intent(client: OpenAI, user_message: str) -> str:
     """Classify the user's intent to select the best specialized role."""
@@ -131,6 +132,11 @@ def run_agent(db: Session, user_id: int, user_message: str) -> dict:
     selected_role = classify_intent(client, user_message)
     role_prompt = ROLE_PROMPTS.get(selected_role, ROLE_PROMPTS["general"])
     dynamic_system_prompt = f"{role_prompt}\n\n{BASE_RULES}"
+
+    # Inject personal preferences if they exist
+    user = db.query(User).filter(User.id == user_id).first()
+    if user and user.preferences:
+        dynamic_system_prompt += f"\n\n### User Personal Context:\n{user.preferences}\n"
 
     # Build message history
     history = get_recent_messages(db, session.id)

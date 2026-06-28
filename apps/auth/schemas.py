@@ -26,9 +26,13 @@ class UserResponse(BaseModel):
     name: str
     email: str
     is_active: bool
+    preferences: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+class UpdatePreferencesRequest(BaseModel):
+    preferences: str
 
 
 class ChangePasswordRequest(BaseModel):
