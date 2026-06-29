@@ -1,6 +1,12 @@
 """Application settings loaded from .env file."""
 
+from datetime import timezone, timedelta
 from pydantic_settings import BaseSettings
+
+# Indian Standard Time (UTC+05:30)
+IST = timezone(timedelta(hours=5, minutes=30))
+TIMEZONE = IST
+
 
 
 class Settings(BaseSettings):

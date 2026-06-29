@@ -2,6 +2,12 @@
 
 import subprocess
 import sys
+import os
+import time
+
+# Set global timezone to IST
+os.environ["TZ"] = "Asia/Kolkata"
+time.tzset()
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request

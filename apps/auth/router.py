@@ -11,6 +11,7 @@ from apps.auth.schemas import (
     TokenResponse,
     UserResponse,
     UpdatePreferencesRequest,
+    UpdateProfileRequest,
 )
 from apps.auth.service import (
     authenticate_user,
@@ -39,6 +40,27 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@router.put("/me", response_model=UserResponse)
+def update_me(
+    data: UpdateProfileRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if data.name is not None:
+        current_user.name = data.name
+    if data.email is not None:
+        # Check if email is already taken
+        existing_user = db.query(User).filter(User.email == data.email, User.id != current_user.id).first()
+        if existing_user:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Email already registered")
+        current_user.email = data.email
+    
+    db.commit()
+    db.refresh(current_user)
     return current_user
 
 

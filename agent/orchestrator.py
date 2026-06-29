@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 
 from openai import OpenAI
 from sqlalchemy.orm import Session
 
-from core.config import settings
+from core.config import settings, IST
 from agent.models import ChatSession, ChatMessage
 from agent.tools import TOOLS
 from agent.handlers import handle_tool_call
@@ -201,7 +201,7 @@ def run_agent(db: Session, user_id: int, user_message: str) -> dict:
             store_message(db, session.id, "assistant", final_text)
 
             # Update session timestamp
-            session.updated_at = datetime.now(timezone.utc)
+            session.updated_at = datetime.now(IST)
             db.commit()
 
             return {

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from core.config import IST
 from core.database import Base
 
 
@@ -16,7 +17,7 @@ class Tag(Base):
     name: Mapped[str] = mapped_column(String(100))
     color: Mapped[str] = mapped_column(String(7), default="#3b82f6")  # hex color
     created_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc)
+        default=lambda: datetime.now(IST)
     )
 
     # Unique constraint: one tag name per user

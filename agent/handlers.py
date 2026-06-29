@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
+
+from core.config import IST
 
 
 from sqlalchemy.orm import Session
@@ -108,7 +110,7 @@ def handle_tool_call(tool_name: str, arguments: dict, db: Session, user_id: int)
         return json.dumps(summary)
 
     elif tool_name == "get_today":
-        date = datetime.now(timezone.utc).date()
+        date = datetime.now(IST).date()
         date_str = date.isoformat()
         return json.dumps({"today": date_str})
         

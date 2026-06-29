@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import enum
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import ForeignKey, Integer, String, Text, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from core.config import IST
 from core.database import Base
 
 
@@ -57,11 +58,11 @@ class Todo(Base):
     )
     is_reminder: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc)
+        default=lambda: datetime.now(IST)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(IST),
+        onupdate=lambda: datetime.now(IST),
     )
 
     # Self-referential: a todo can have many subtasks
@@ -96,7 +97,8 @@ class TodoRecurrence(Base):
         DateTime, nullable=True, default=None
     )
     created_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc)
+        default=lambda: datetime.now(IST)
     )
 
     todo: Mapped[Todo] = relationship("Todo", back_populates="recurrence")
+

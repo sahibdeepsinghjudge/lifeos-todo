@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import calendar
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
+
+from core.config import IST
 
 from apps.tags.models import Tag, Taggable
 from apps.todo.models import (
@@ -142,7 +144,7 @@ def list_todos(
         query = query.filter(Todo.title.ilike(f"%{search}%"))
 
     if overdue:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(IST)
         query = query.filter(
             Todo.due_date < now,
             Todo.status != StatusEnum.completed.value,
@@ -167,7 +169,7 @@ def update_todo(db: Session, user_id: int, todo_id: int, data: TodoUpdate) -> To
             value = value.value
         setattr(todo, field, value)
 
-    todo.updated_at = datetime.now(timezone.utc)
+    todo.updated_at = datetime.now(IST)
     db.commit()
     db.refresh(todo)
     return todo
@@ -176,7 +178,7 @@ def update_todo(db: Session, user_id: int, todo_id: int, data: TodoUpdate) -> To
 def delete_todo(db: Session, user_id: int, todo_id: int) -> None:
     """Soft-delete a todo and all its subtasks."""
     todo = _get_todo_or_404(db, user_id, todo_id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(IST)
     todo.deleted_at = now
 
     # Cascade soft-delete to subtasks
@@ -242,8 +244,8 @@ def complete_todo(
     """Mark a todo as completed; if recurring, spawn the next occurrence."""
     todo = _get_todo_or_404(db, user_id, todo_id)
     todo.status = StatusEnum.completed.value
-    todo.completed_at = datetime.now(timezone.utc)
-    todo.updated_at = datetime.now(timezone.utc)
+    todo.completed_at = datetime.now(IST)
+    todo.updated_at = datetime.now(IST)
 
     next_todo: Todo | None = None
     if todo.recurrence is not None:
@@ -260,7 +262,7 @@ def _create_next_occurrence(
     db: Session, todo: Todo, recurrence: TodoRecurrence
 ) -> Todo | None:
     """Clone the completed todo with a new due date based on recurrence rules."""
-    base_date = todo.due_date or datetime.now(timezone.utc)
+    base_date = todo.due_date or datetime.now(IST)
 
     if recurrence.frequency == FrequencyEnum.daily.value:
         next_date = base_date + timedelta(days=recurrence.interval)
@@ -275,46 +277,108 @@ def _create_next_occurrence(
     if recurrence.end_date is not None and next_date > recurrence.end_date:
         return None
 
-    # Clone the todo
-    new_todo = Todo(
-        user_id=todo.user_id,
-        title=todo.title,
-        description=todo.description,
-        priority=todo.priority,
-        status=StatusEnum.pending.value,
-        due_date=next_date,
-        is_reminder=todo.is_reminder,
-    )
-    db.add(new_todo)
-    db.flush()  # get new_todo.id before creating recurrence
-
-    # Clone the recurrence rule
-    new_recurrence = TodoRecurrence(
-        todo_id=new_todo.id,
-        frequency=recurrence.frequency,
-        interval=recurrence.interval,
-        end_date=recurrence.end_date,
-        next_occurrence=next_date,
-    )
-    db.add(new_recurrence)
-
-    # Update old recurrence pointer
-    recurrence.next_occurrence = next_date
-
-    # Clone tags from the original todo
-    taggables = (
-        db.query(Taggable)
-        .filter(Taggable.entity_type == "todo", Taggable.entity_id == todo.id)
-        .all()
-    )
-    for t in taggables:
-        db.add(
-            Taggable(
-                tag_id=t.tag_id,
-                entity_type="todo",
-                entity_id=new_todo.id,
-            )
+    # Check if a task with the exact title already exists for this date
+    existing_next = (
+        db.query(Todo)
+        .filter(
+            Todo.user_id == todo.user_id,
+            Todo.title == todo.title,
+            Todo.due_date == next_date,
+            Todo.deleted_at.is_(None)
         )
+        .first()
+    )
+
+    if existing_next:
+        # Link recurrence to existing task if missing
+        if not existing_next.recurrence:
+            new_recurrence = TodoRecurrence(
+                todo_id=existing_next.id,
+                frequency=recurrence.frequency,
+                interval=recurrence.interval,
+                end_date=recurrence.end_date,
+                next_occurrence=next_date,
+            )
+            db.add(new_recurrence)
+        recurrence.next_occurrence = next_date
+        new_todo = existing_next
+    else:
+        # Clone the todo
+        new_todo = Todo(
+            user_id=todo.user_id,
+            title=todo.title,
+            description=todo.description,
+            priority=todo.priority,
+            status=StatusEnum.pending.value,
+            due_date=next_date,
+            is_reminder=todo.is_reminder,
+        )
+        db.add(new_todo)
+        db.flush()  # get new_todo.id before creating recurrence
+
+        # Clone the recurrence rule
+        new_recurrence = TodoRecurrence(
+            todo_id=new_todo.id,
+            frequency=recurrence.frequency,
+            interval=recurrence.interval,
+            end_date=recurrence.end_date,
+            next_occurrence=next_date,
+        )
+        db.add(new_recurrence)
+
+        # Update old recurrence pointer
+        recurrence.next_occurrence = next_date
+
+        # Clone tags from the original todo
+        taggables = (
+            db.query(Taggable)
+            .filter(Taggable.entity_type == "todo", Taggable.entity_id == todo.id)
+            .all()
+        )
+        for t in taggables:
+            db.add(
+                Taggable(
+                    tag_id=t.tag_id,
+                    entity_type="todo",
+                    entity_id=new_todo.id,
+                )
+            )
+
+    # Clone subtasks if new_todo doesn't have them yet
+    existing_subtasks_count = (
+        db.query(Todo)
+        .filter(Todo.parent_id == new_todo.id, Todo.deleted_at.is_(None))
+        .count()
+    )
+
+    if existing_subtasks_count == 0:
+        subtasks = (
+            db.query(Todo)
+            .filter(Todo.parent_id == todo.id, Todo.deleted_at.is_(None))
+            .all()
+        )
+        for child in subtasks:
+            child_due_date = child.due_date
+            if child_due_date:
+                if recurrence.frequency == FrequencyEnum.daily.value:
+                    child_due_date += timedelta(days=recurrence.interval)
+                elif recurrence.frequency == FrequencyEnum.weekly.value:
+                    child_due_date += timedelta(weeks=recurrence.interval)
+                elif recurrence.frequency == FrequencyEnum.monthly.value:
+                    child_due_date = _add_months(child_due_date, recurrence.interval)
+
+            db.add(
+                Todo(
+                    user_id=child.user_id,
+                    parent_id=new_todo.id,
+                    title=child.title,
+                    description=child.description,
+                    priority=child.priority,
+                    status=StatusEnum.pending.value,
+                    due_date=child_due_date,
+                    is_reminder=child.is_reminder,
+                )
+            )
 
     return new_todo
 
@@ -330,7 +394,7 @@ def set_recurrence(
             detail="Recurrence already exists for this todo",
         )
 
-    base_date = todo.due_date or datetime.now(timezone.utc)
+    base_date = todo.due_date or datetime.now(IST)
     if data.frequency == FrequencyEnum.daily:
         next_occ = base_date + timedelta(days=data.interval)
     elif data.frequency == FrequencyEnum.weekly:
