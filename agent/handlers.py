@@ -113,6 +113,41 @@ def handle_tool_call(tool_name: str, arguments: dict, db: Session, user_id: int)
         date = datetime.now(IST).date()
         date_str = date.isoformat()
         return json.dumps({"today": date_str})
+    
+    elif tool_name == "get_next_date":
+        date = datetime.now(IST).date()
+        next_date = date + timedelta(days=arguments['days'])
+        next_date_str = next_date.isoformat()
+        return json.dumps({"next_date": next_date_str})
+
+    elif tool_name == "save_user_context":
+        from apps.auth.models import User
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return json.dumps({"error": "User not found"})
+        
+        prefs = {}
+        if user.preferences:
+            try:
+                prefs = json.loads(user.preferences)
+            except json.JSONDecodeError:
+                pass
+        
+        tag = arguments.get("tag", "general")
+        context = arguments.get("context", "")
+        prefs[tag] = context
+        
+        user.preferences = json.dumps(prefs)
+        db.commit()
+        return json.dumps({"success": True, "tag": tag, "context": context})
+
+    elif tool_name == "list_tags":
+        from apps.tags.service import list_tags
+        tags = list_tags(db, user_id)
+        return json.dumps([
+            {"id": t.id, "name": t.name, "color": t.color}
+            for t in tags
+        ])
         
     else:
         return json.dumps({"error": f"Unknown tool: {tool_name}"})

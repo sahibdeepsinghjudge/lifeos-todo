@@ -270,6 +270,55 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_next_date",
+            "description": "Get the next date based on the current date and the number of days to add.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": "Number of days to add to the current date",
+                    },
+                },
+                "required": ["days"],
+            },
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_user_context",
+            "description": "Save personal context or preferences related to the user along with a tag. Use this to remember things about the user.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tag": {
+                        "type": "string",
+                        "description": "A short tag or key describing the context (e.g., 'diet', 'work', 'location').",
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "The context or information to save about the user.",
+                    },
+                },
+                "required": ["tag", "context"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_tags",
+            "description": "List all existing tags/categories for the user.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
 ]
 
 
