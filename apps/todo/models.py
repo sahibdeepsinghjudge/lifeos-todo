@@ -4,7 +4,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import ForeignKey, Integer, String, Text, DateTime
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, remote
 
 from core.config import IST
 from core.database import Base
@@ -65,9 +65,9 @@ class Todo(Base):
         onupdate=lambda: datetime.now(IST),
     )
 
-    # Self-referential: a todo can have many subtasks
     subtasks: Mapped[list[Todo]] = relationship(
         "Todo",
+        primaryjoin="and_(Todo.id==remote(Todo.parent_id), Todo.deleted_at.is_(None))",
         foreign_keys="[Todo.parent_id]",
         lazy="selectin",
     )

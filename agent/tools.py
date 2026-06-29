@@ -311,6 +311,23 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "delete_user_context",
+            "description": "Delete a previously saved personal context or preference for the user by its tag.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tag": {
+                        "type": "string",
+                        "description": "The short tag or key of the context to delete (e.g., 'diet', 'work').",
+                    },
+                },
+                "required": ["tag"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_tags",
             "description": "List all existing tags/categories for the user.",
             "parameters": {

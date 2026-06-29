@@ -141,6 +141,22 @@ def handle_tool_call(tool_name: str, arguments: dict, db: Session, user_id: int)
         db.commit()
         return json.dumps({"success": True, "tag": tag, "context": context})
 
+    elif tool_name == "delete_user_context":
+        tag = arguments.get("tag")
+        prefs = {}
+        if user.preferences:
+            try:
+                prefs = json.loads(user.preferences)
+            except:
+                pass
+        
+        if tag in prefs:
+            del prefs[tag]
+            user.preferences = json.dumps(prefs)
+            db.commit()
+            return json.dumps({"success": True, "tag": tag, "message": "Context deleted successfully."})
+        return json.dumps({"success": False, "message": f"Context with tag '{tag}' not found."})
+
     elif tool_name == "list_tags":
         from apps.tags.service import list_tags
         tags = list_tags(db, user_id)
