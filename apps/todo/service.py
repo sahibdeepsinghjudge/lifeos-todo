@@ -79,6 +79,12 @@ def create_todo(db: Session, user_id: int, data: TodoCreate) -> Todo:
                 detail="You can only add subtasks to top-level tasks, not to other subtasks.",
             )
 
+    # Convert timezone-aware datetimes to local (IST) before making naive
+    due_date = data.due_date
+    if isinstance(due_date, datetime) and due_date.tzinfo is not None:
+        from core.config import IST
+        due_date = due_date.astimezone(IST).replace(tzinfo=None)
+
     todo = Todo(
         user_id=user_id,
         parent_id=data.parent_id,
@@ -86,7 +92,7 @@ def create_todo(db: Session, user_id: int, data: TodoCreate) -> Todo:
         description=data.description,
         priority=data.priority.value,
         status=data.status.value,
-        due_date=data.due_date,
+        due_date=due_date,
         is_reminder=data.is_reminder,
     )
     db.add(todo)
@@ -167,6 +173,10 @@ def update_todo(db: Session, user_id: int, todo_id: int, data: TodoUpdate) -> To
         if value is not None and hasattr(value, "value"):
             # Convert enum to its string value
             value = value.value
+        elif isinstance(value, datetime) and value.tzinfo is not None:
+            # Convert timezone-aware datetimes to local (IST) before making naive
+            from core.config import IST
+            value = value.astimezone(IST).replace(tzinfo=None)
         setattr(todo, field, value)
 
     todo.updated_at = datetime.now(IST)
