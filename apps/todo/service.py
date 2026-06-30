@@ -185,6 +185,16 @@ def update_todo(db: Session, user_id: int, todo_id: int, data: TodoUpdate) -> To
             value = value.astimezone(IST).replace(tzinfo=None)
         setattr(todo, field, value)
 
+    # Clear completed_at if status is changed away from completed
+    if "status" in update_fields:
+        new_status = update_fields["status"]
+        if hasattr(new_status, "value"):
+            new_status = new_status.value
+        if new_status != StatusEnum.completed.value:
+            todo.completed_at = None
+        else:
+            todo.completed_at = datetime.now(IST)
+
     todo.updated_at = datetime.now(IST)
     db.commit()
     db.refresh(todo)
