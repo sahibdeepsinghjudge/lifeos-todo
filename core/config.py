@@ -18,10 +18,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
 
-    # Gemini (via OpenAI SDK)
-    GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-3.5-flash"
-    GEMINI_LIGHT_MODEL: str = "gemini-3.1-flash-lite"
+    # Groq (via OpenAI SDK)
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
+    GROQ_LIGHT_MODEL: str = "llama-3.1-8b-instant"
 
     # Dev mode
     DEV_MODE: bool = True

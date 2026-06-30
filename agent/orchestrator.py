@@ -102,8 +102,8 @@ def store_message(
 async def run_agent_async(db: Session, user_id: int, user_message: str):
     """Main agentic loop with WebSockets and 2-tier model architecture."""
     client = AsyncOpenAI(
-        api_key=settings.GEMINI_API_KEY,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        api_key=settings.GROQ_API_KEY,
+        base_url="https://api.groq.com/openai/v1",
     )
 
     session = get_or_create_session(db, user_id)
@@ -118,7 +118,7 @@ async def run_agent_async(db: Session, user_id: int, user_message: str):
 
     try:
         light_response = await client.chat.completions.create(
-            model=settings.GEMINI_LIGHT_MODEL,
+            model=settings.GROQ_LIGHT_MODEL,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": LIGHT_MODEL_PROMPT.format(current_date=current_time_str)},
@@ -175,7 +175,7 @@ async def run_agent_async(db: Session, user_id: int, user_message: str):
 
     for _ in range(max_iterations):
         stream = await client.chat.completions.create(
-            model=settings.GEMINI_MODEL,
+            model=settings.GROQ_MODEL,
             messages=messages,
             tools=TOOLS,
             tool_choice="auto",
