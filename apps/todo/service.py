@@ -141,9 +141,15 @@ def list_todos(
         )
 
     if due_before:
+        if due_before.tzinfo is not None:
+            from core.config import IST
+            due_before = due_before.astimezone(IST).replace(tzinfo=None)
         query = query.filter(Todo.due_date <= due_before)
 
     if due_after:
+        if due_after.tzinfo is not None:
+            from core.config import IST
+            due_after = due_after.astimezone(IST).replace(tzinfo=None)
         query = query.filter(Todo.due_date >= due_after)
 
     if search:

@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from core.database import get_db
-from core.security import get_current_user
+from core.security import get_current_user, decode_access_token
 from apps.auth.models import User
-from agent.orchestrator import run_agent, get_or_create_session
+from agent.orchestrator import run_agent_async
 from agent.models import ChatSession, ChatMessage
+from agent.ws_manager import manager
+import json
+import asyncio
 
 router = APIRouter(prefix="/agent", tags=["Agent"])
 
@@ -34,18 +37,39 @@ class MessageResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-@router.post("/chat", response_model=ChatResponse)
-def chat(
-    body: ChatRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> ChatResponse:
-    result = run_agent(db, user.id, body.message)
-    return ChatResponse(**result)
+@router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket, token: str, db: Session = Depends(get_db)):
+    try:
+        payload = decode_access_token(token)
+        user_id = int(payload.get("sub"))
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            await websocket.close(code=1008)
+            return
+    except Exception:
+        await websocket.close(code=1008)
+        return
+
+    await manager.connect(websocket, user_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                msg_data = json.loads(data)
+                if "message" in msg_data:
+                    user_message = msg_data["message"]
+                    # Fire off the agent processing asynchronously
+                    asyncio.create_task(run_agent_async(db, user_id, user_message))
+            except json.JSONDecodeError:
+                pass
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, user_id)
 
 
 @router.get("/history", response_model=list[MessageResponse])
 def get_history(
+    limit: int = 5,
+    offset: int = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[MessageResponse]:
@@ -57,13 +81,19 @@ def get_history(
     )
     if not session:
         return []
-    messages = (
+    
+    # Fetch descending (newest first) with limit and offset
+    messages_desc = (
         db.query(ChatMessage)
         .filter(ChatMessage.session_id == session.id)
-        .order_by(ChatMessage.created_at.asc())
+        .order_by(ChatMessage.created_at.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
-    return messages
+    
+    # Reverse back to chronological order (oldest first)
+    return messages_desc[::-1]
 
 
 @router.delete("/history")

@@ -103,4 +103,4 @@ app.include_router(agent_router)
 # ---------------------------------------------------------------------------
 @app.get("/health", tags=["Health"])
 def health_check():
-    return {"status": "ok", "app": "LifeOS Todo"}
+    return {"status": "ok", "app": "Phagan AI"}

@@ -165,5 +165,8 @@ def handle_tool_call(tool_name: str, arguments: dict, db: Session, user_id: int)
             for t in tags
         ])
         
+    elif tool_name == "ask_user_question":
+        return json.dumps({"status": "Question sent to user via dialog box. Do not output anything else. Stop and wait for their reply."})
+        
     else:
         return json.dumps({"error": f"Unknown tool: {tool_name}"})

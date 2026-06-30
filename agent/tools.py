@@ -336,6 +336,24 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "ask_user_question",
+            "description": "CRITICAL INSTRUCTION: You MUST use this tool whenever you need to ask the user a question, clarify their intent, or request missing information. Do NOT ask questions in a regular text response. Always trigger this tool instead.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "questions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "A list of one or more distinct questions to ask the user.",
+                    },
+                },
+                "required": ["questions"],
+            },
+        },
+    },
 ]
 
 
