@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Gemini (via OpenAI SDK)
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.5-flash"
-    GEMINI_LIGHT_MODEL: str = "gemini-3.5-flash-lite"
+    GEMINI_LIGHT_MODEL: str = "gemini-3.1-flash-lite"
 
     # Dev mode
     DEV_MODE: bool = True

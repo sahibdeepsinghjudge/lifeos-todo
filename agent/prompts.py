@@ -12,11 +12,23 @@ Respond with EXACTLY one of the following roles in plain text, nothing else (no 
 If none of the specialized roles fit perfectly, or if the request is ambiguous, output 'general'.
 """
 
-LIGHT_MODEL_PROMPT = """You are the Context Extraction & Prompt Refinement engine for the Phagan assistant.
-Your job is to analyze the user's latest message, extract any long-term personal context (like preferences, routines, physical stats, or dietary habits), and rewrite the user's prompt to be incredibly explicit and actionable for the advanced execution model.
+LIGHT_MODEL_PROMPT = """You are the Context Extraction, Prompt Refinement, and Routing engine for the Phagan assistant.
+Your job is to analyze the user's latest message and do three things:
+1. Extract any long-term personal context (like preferences, routines, physical stats, or dietary habits).
+2. Rewrite the user's prompt to be incredibly explicit and actionable for the advanced execution model, resolving relative dates.
+3. Classify the user's intent into one of the specialized roles.
+
+Valid Roles:
+- daily_planner
+- gym_trainer
+- budget_planner
+- house_maker
+- analyst
+- product_manager
+- general
 
 If you find NEW personal context that should be saved, output it in the 'extracted_context' array.
-In 'refined_prompt', rewrite their request so the advanced model knows exactly what to do. Include any necessary context if they are referring to something implicitly.
+In 'refined_prompt', rewrite their request so the advanced model knows exactly what to do. 
 Important: Always resolve relative date references (like "today", "tomorrow", "next Monday") into concrete dates in the refined prompt based on the CURRENT SYSTEM DATE provided below.
 
 Current System Date/Time: {current_date}
@@ -26,7 +38,8 @@ Output valid JSON exactly like this:
   "extracted_context": [
     {"tag": "diet", "context": "User is allergic to peanuts"}
   ],
-  "refined_prompt": "Create a task to buy groceries on 2026-06-30, but ensure NO peanuts are included."
+  "refined_prompt": "Create a task to buy groceries on 2026-06-30, but ensure NO peanuts are included.",
+  "intent_role": "house_maker"
 }
 """
 

@@ -15,26 +15,7 @@ from agent.prompts import ROUTER_PROMPT, BASE_RULES, ROLE_PROMPTS, LIGHT_MODEL_P
 from agent.ws_manager import manager
 from apps.auth.models import User
 
-async def classify_intent(client: AsyncOpenAI, user_message: str) -> str:
-    """Classify the user's intent to select the best specialized role."""
-    messages = [
-        {"role": "system", "content": ROUTER_PROMPT},
-        {"role": "user", "content": user_message}
-    ]
-    
-    try:
-        response = await client.chat.completions.create(
-            model=settings.GEMINI_MODEL,
-            messages=messages,
-            temperature=0.0,
-        )
-        role = response.choices[0].message.content.strip().lower()
-        if role not in ROLE_PROMPTS:
-            return "general"
-        return role
-    except Exception as e:
-        print(f"Classification failed: {e}")
-        return "general"
+# classify_intent removed - merged into Light Model Pass
 
 def get_or_create_session(db: Session, user_id: int) -> ChatSession:
     """Get the most recent session or create a new one."""
@@ -144,9 +125,20 @@ async def run_agent_async(db: Session, user_id: int, user_message: str):
                 {"role": "user", "content": f"User's current preferences: {user.preferences if user else ''}\n\nUser Message: {user_message}"}
             ]
         )
-        light_data = json.loads(light_response.choices[0].message.content)
+        light_response_text = light_response.choices[0].message.content.strip()
+        if light_response_text.startswith("```json"):
+            light_response_text = light_response_text[7:]
+        if light_response_text.startswith("```"):
+            light_response_text = light_response_text[3:]
+        if light_response_text.endswith("```"):
+            light_response_text = light_response_text[:-3]
+        light_data = json.loads(light_response_text.strip())
         extracted_context = light_data.get("extracted_context", [])
         refined_prompt = light_data.get("refined_prompt", user_message)
+        selected_role = light_data.get("intent_role", "general").lower()
+        
+        if selected_role not in ROLE_PROMPTS:
+            selected_role = "general"
 
         if extracted_context and user:
             # Auto-save new context
@@ -160,11 +152,11 @@ async def run_agent_async(db: Session, user_id: int, user_message: str):
     except Exception as e:
         print(f"Light model parsing failed: {e}")
         refined_prompt = user_message
+        selected_role = "general"
 
     # --- 2. ADVANCED MODEL PASS ---
     await manager.send_personal_message({"type": "status", "message": "Thinking..."}, user_id)
 
-    selected_role = await classify_intent(client, refined_prompt)
     role_prompt = ROLE_PROMPTS.get(selected_role, ROLE_PROMPTS["general"])
     
     dynamic_system_prompt = f"{role_prompt}\n\n{BASE_RULES.format(current_date=current_time_str)}\n\nIMPORTANT: You must ask questions if you are unsure or need clarification before doing destructive actions."
@@ -179,7 +171,7 @@ async def run_agent_async(db: Session, user_id: int, user_message: str):
         history[-1]["content"] = f"Refined Intent: {refined_prompt}"
 
     messages: list[dict] = [{"role": "system", "content": dynamic_system_prompt}] + history
-    max_iterations = 10
+    max_iterations = 5
 
     for _ in range(max_iterations):
         stream = await client.chat.completions.create(

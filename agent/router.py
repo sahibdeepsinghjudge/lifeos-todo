@@ -14,6 +14,7 @@ from agent.models import ChatSession, ChatMessage
 from agent.ws_manager import manager
 import json
 import asyncio
+from sqlalchemy import or_, and_
 
 router = APIRouter(prefix="/agent", tags=["Agent"])
 
@@ -58,8 +59,17 @@ async def websocket_endpoint(websocket: WebSocket, token: str, db: Session = Dep
                 msg_data = json.loads(data)
                 if "message" in msg_data:
                     user_message = msg_data["message"]
+                    
+                    async def run_agent_wrapper():
+                        try:
+                            await asyncio.wait_for(run_agent_async(db, user_id, user_message), timeout=60.0)
+                        except asyncio.TimeoutError:
+                            await manager.send_personal_message({"type": "error", "message": "The agent timed out while processing your request."}, user_id)
+                        except Exception as e:
+                            await manager.send_personal_message({"type": "error", "message": f"An error occurred: {str(e)}"}, user_id)
+
                     # Fire off the agent processing asynchronously
-                    asyncio.create_task(run_agent_async(db, user_id, user_message))
+                    asyncio.create_task(run_agent_wrapper())
             except json.JSONDecodeError:
                 pass
     except WebSocketDisconnect:
@@ -82,10 +92,17 @@ def get_history(
     if not session:
         return []
     
-    # Fetch descending (newest first) with limit and offset
+    # Fetch descending (newest first) with limit and offset, filtering out tool noise
     messages_desc = (
         db.query(ChatMessage)
-        .filter(ChatMessage.session_id == session.id)
+        .filter(
+            ChatMessage.session_id == session.id,
+            ChatMessage.role.in_(["user", "assistant"]),
+            or_(
+                ChatMessage.role == "user",
+                and_(ChatMessage.role == "assistant", ChatMessage.content != None, ChatMessage.content != "")
+            )
+        )
         .order_by(ChatMessage.created_at.desc())
         .offset(offset)
         .limit(limit)
