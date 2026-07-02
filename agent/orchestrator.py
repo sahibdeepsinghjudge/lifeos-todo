@@ -1,324 +1,188 @@
+"""Agent orchestrator — classifies user intent and routes to the right agent."""
+
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
-import asyncio
 
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 
 from core.config import settings, IST
-from agent.models import ChatSession, ChatMessage
-from agent.tools import TOOLS
-from agent.handlers import handle_tool_call
-from agent.prompts import ROUTER_PROMPT, BASE_RULES, ROLE_PROMPTS, LIGHT_MODEL_PROMPT
+from agent.db_ops import get_or_create_session, get_recent_messages, store_message
+from agent.models import ChatMessage
+from agent.simple_agent import run_simple_agent
+from agent.complex_agent import run_complex_agent
 from agent.ws_manager import manager
+from agent.prompts import CLASSIFIER_PROMPT
 from apps.auth.models import User
 
-# classify_intent removed - merged into Light Model Pass
-
-def get_or_create_session(db: Session, user_id: int) -> ChatSession:
-    """Get the most recent session or create a new one."""
-    session = (
-        db.query(ChatSession)
-        .filter(ChatSession.user_id == user_id)
-        .order_by(ChatSession.updated_at.desc())
-        .first()
-    )
-    if not session:
-        session = ChatSession(user_id=user_id)
-        db.add(session)
-        db.commit()
-        db.refresh(session)
-    return session
-
-
-def get_recent_messages(db: Session, session_id: int, limit: int = 40) -> list[dict]:
-    """Load last N messages formatted for OpenAI API."""
-    messages_db = (
-        db.query(ChatMessage)
-        .filter(ChatMessage.session_id == session_id)
-        .order_by(ChatMessage.created_at.desc())
-        .limit(limit)
-        .all()
-    )
-    messages_db.reverse()  # Chronological order
-    
-    # Ensure the history starts with a user message to prevent sequence validation errors from Gemini
-    while messages_db and messages_db[0].role != "user":
-        messages_db.pop(0)
-
-    openai_messages: list[dict] = []
-    for msg in messages_db:
-        if msg.role == "tool":
-            # Tool result messages formatted as user context
-            tool_name = msg.tool_calls.get("name", "tool") if msg.tool_calls else "tool"
-            openai_messages.append({
-                "role": "user",
-                "content": f"[Tool Result for {tool_name}]: {msg.content or ''}",
-            })
-        elif msg.role == "assistant" and msg.tool_calls:
-            # Assistant message with tool calls flattened
-            content = msg.content or ""
-            try:
-                calls = msg.tool_calls.get("calls", [])
-                func_names = [c.get("function", {}).get("name", "unknown") for c in calls if isinstance(c, dict)]
-                if func_names:
-                    content += f"\n[Called tools: {', '.join(func_names)}]"
-            except Exception:
-                pass
-            
-            openai_messages.append({
-                "role": "assistant",
-                "content": content.strip() or "Processed tool.",
-            })
-        else:
-            openai_messages.append({
-                "role": msg.role,
-                "content": msg.content or "",
-            })
-    return openai_messages
-
-
-def store_message(
-    db: Session,
-    session_id: int,
-    role: str,
-    content: str | None,
-    tool_calls: dict | None = None,
-) -> ChatMessage:
-    """Store a message in the database."""
-    msg = ChatMessage(
-        session_id=session_id,
-        role=role,
-        content=content,
-        tool_calls=tool_calls,
-    )
-    db.add(msg)
-    db.commit()
-    return msg
+logger = logging.getLogger(__name__)
 
 
 async def run_agent_async(db: Session, user_id: int, user_message: str):
-    """Main agentic loop with WebSockets and 2-tier model architecture."""
-    client = AsyncOpenAI(
-        api_key=settings.GEMINI_API_KEY,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-    )
+    """Main entry point — classify → route to greeting / simple / complex agent."""
+    if settings.AI_PROVIDER == "groq":
+        client = AsyncOpenAI(
+            api_key=settings.GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1",
+        )
+        model = settings.GROQ_MODEL
+        light_model = settings.GROQ_LIGHT_MODEL
+    else:
+        client = AsyncOpenAI(
+            api_key=settings.GEMINI_API_KEY,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        )
+        model = settings.GEMINI_MODEL
+        light_model = settings.GEMINI_LIGHT_MODEL
 
     session = get_or_create_session(db, user_id)
     store_message(db, session.id, "user", user_message)
 
     user = db.query(User).filter(User.id == user_id).first()
-
-    # --- 1. LIGHT MODEL PASS (Context Extraction & Prompt Refinement) ---
-    await manager.send_personal_message({"type": "status", "message": "Extracting context..."}, user_id)
-
     current_time_str = datetime.now(IST).strftime("%Y-%m-%d %I:%M %p %Z")
 
+    agents_used: list[str] = []
+    total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    def _add_usage(u: dict) -> None:
+        total_usage["prompt_tokens"] += u.get("prompt_tokens", 0)
+        total_usage["completion_tokens"] += u.get("completion_tokens", 0)
+        total_usage["total_tokens"] += u.get("total_tokens", 0)
+
+    # ── 0. CONTINUATION CHECK ────────────────────────────────────────────
+    # If the last tool message was ask_user_question, the user is replying
+    # to a question — skip classification and go straight to the complex agent.
+    if _is_continuation(db, session.id):
+        agents_used.append("continuation (skipped classifier)")
+        await manager.send_personal_message({"type": "status", "message": "Resuming..."}, user_id)
+
+        history = get_recent_messages(db, session.id)
+        result = await run_complex_agent(
+            client=client, db=db, user_id=user_id, session_id=session.id,
+            history=history, role="general", current_time_str=current_time_str,
+            user_prefs=user.preferences if user else None,
+            model_name=model,
+        )
+        agents_used.append(f"complex_agent ({model})")
+        _add_usage(result.get("usage", {}))
+        session.updated_at = datetime.now(IST)
+        db.commit()
+        await _send_usage(user_id, agents_used, total_usage)
+        return
+
+    # ── 1. CLASSIFY ──────────────────────────────────────────────────────
+    await manager.send_personal_message({"type": "status", "message": "Analyzing..."}, user_id)
+
+    classification = await _classify(client, user_message, current_time_str, light_model)
+    agents_used.append(f"classifier ({light_model})")
+    _add_usage(classification.get("usage", {}))
+
+    mode = classification.get("mode", "simple")
+    role = classification.get("role", "general")
+
+    # ── 2A. GREETING ─────────────────────────────────────────────────────
+    if mode == "greeting":
+        response_text = classification.get("response", "Hey! How can I help you?")
+        msg_obj = store_message(db, session.id, "assistant", response_text)
+        await manager.send_personal_message({
+            "type": "message",
+            "message": {"id": msg_obj.id, "role": "assistant", "content": response_text, "created_at": msg_obj.created_at.isoformat()},
+        }, user_id)
+        session.updated_at = datetime.now(IST)
+        db.commit()
+        await _send_usage(user_id, agents_used, total_usage)
+        return
+
+    # ── 2B. SIMPLE TASK ──────────────────────────────────────────────────
+    history = get_recent_messages(db, session.id)
+
+    if mode == "simple":
+        print("RAN SIMPLE AGENT")
+        await manager.send_personal_message({"type": "status", "message": "Working..."}, user_id)
+        result = await run_simple_agent(
+            client=client, db=db, user_id=user_id, session_id=session.id,
+            history=history, role=role, current_time_str=current_time_str,
+            user_prefs=user.preferences if user else None,
+            model_name=light_model,
+        )
+        agents_used.append(f"simple_agent ({light_model})")
+        _add_usage(result.get("usage", {}))
+        session.updated_at = datetime.now(IST)
+        db.commit()
+        await _send_usage(user_id, agents_used, total_usage)
+        return
+
+    # ── 2C. COMPLEX TASK ─────────────────────────────────────────────────
+    await manager.send_personal_message({"type": "status", "message": "Planning workflow..."}, user_id)
+    result = await run_complex_agent(
+        client=client, db=db, user_id=user_id, session_id=session.id,
+        history=history, role=role, current_time_str=current_time_str,
+        user_prefs=user.preferences if user else None,
+        model_name=model,
+    )
+    agents_used.append(f"complex_agent ({model})")
+    _add_usage(result.get("usage", {}))
+    session.updated_at = datetime.now(IST)
+    db.commit()
+    await _send_usage(user_id, agents_used, total_usage)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Private helpers
+# ─────────────────────────────────────────────────────────────────────────
+
+def _is_continuation(db: Session, session_id: int) -> bool:
+    """Check if the previous message (before the current user message) was ask_user_question."""
+    last_msgs = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.created_at.desc())
+        .limit(2)
+        .all()
+    )
+    if len(last_msgs) < 2:
+        return False
+        
+    prev_msg = last_msgs[1]  # index 0 is the newly inserted user message
+    if prev_msg.role == "tool" and prev_msg.tool_calls:
+        return prev_msg.tool_calls.get("name") == "ask_user_question"
+    return False
+
+
+async def _classify(client: AsyncOpenAI, user_message: str, current_time_str: str, light_model: str) -> dict:
+    """Run the light model classifier to decide greeting / simple / complex + role."""
+    usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     try:
-        light_response = await client.chat.completions.create(
-            model=settings.GEMINI_LIGHT_MODEL,
+        response = await client.chat.completions.create(
+            model=light_model,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": LIGHT_MODEL_PROMPT.format(current_date=current_time_str)},
-                {"role": "user", "content": f"User's current preferences: {user.preferences if user else ''}\n\nUser Message: {user_message}"}
-            ]
+                {"role": "system", "content": CLASSIFIER_PROMPT.format(current_date=current_time_str)},
+                {"role": "user", "content": user_message},
+            ],
         )
-        light_response_text = light_response.choices[0].message.content.strip()
-        if light_response_text.startswith("```json"):
-            light_response_text = light_response_text[7:]
-        if light_response_text.startswith("```"):
-            light_response_text = light_response_text[3:]
-        if light_response_text.endswith("```"):
-            light_response_text = light_response_text[:-3]
-        light_data = json.loads(light_response_text.strip())
-        extracted_context = light_data.get("extracted_context", [])
-        refined_prompt = light_data.get("refined_prompt", user_message)
-        selected_role = light_data.get("intent_role", "general").lower()
-        
-        if selected_role not in ROLE_PROMPTS:
-            selected_role = "general"
-
-        if extracted_context and user:
-            # Auto-save new context
-            new_prefs_str = json.dumps(extracted_context)
-            if user.preferences:
-                user.preferences += "\n" + new_prefs_str
-            else:
-                user.preferences = new_prefs_str
-            db.commit()
-
-    except Exception as e:
-        print(f"Light model parsing failed: {e}")
-        refined_prompt = user_message
-        selected_role = "general"
-
-    # --- 2. ADVANCED MODEL PASS ---
-    await manager.send_personal_message({"type": "status", "message": "Thinking..."}, user_id)
-
-    role_prompt = ROLE_PROMPTS.get(selected_role, ROLE_PROMPTS["general"])
-    
-    dynamic_system_prompt = f"{role_prompt}\n\n{BASE_RULES.format(current_date=current_time_str)}\n\nIMPORTANT: You must ask questions if you are unsure or need clarification before doing destructive actions."
-    
-    if user and user.preferences:
-        dynamic_system_prompt += f"\n\n### User Personal Context:\n{user.preferences}\n"
-
-    history = get_recent_messages(db, session.id)
-    
-    # Replace the user's raw message with the refined prompt for the advanced model's context
-    if history and history[-1]["role"] == "user":
-        history[-1]["content"] = f"Refined Intent: {refined_prompt}"
-
-    messages: list[dict] = [{"role": "system", "content": dynamic_system_prompt}] + history
-    max_iterations = 5
-
-    for _ in range(max_iterations):
-        stream = await client.chat.completions.create(
-            model=settings.GEMINI_MODEL,
-            messages=messages,
-            tools=TOOLS,
-            tool_choice="auto",
-            stream=True
-        )
-
-        tool_calls_buffer = {}
-        content_buffer = ""
-        is_tool_call = False
-
-        msg_id_sent = False
-        msg_id = None
-        
-        async for chunk in stream:
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta
-            
-            if delta.tool_calls:
-                is_tool_call = True
-                for tc in delta.tool_calls:
-                    idx = tc.index
-                    if idx not in tool_calls_buffer:
-                        tool_calls_buffer[idx] = {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {"name": tc.function.name or "", "arguments": ""}
-                        }
-                    if tc.function.arguments:
-                        tool_calls_buffer[idx]["function"]["arguments"] += tc.function.arguments
-            elif delta.content:
-                content_buffer += delta.content
-                if not msg_id_sent:
-                    # Save a placeholder message to get an ID for streaming
-                    msg_obj = store_message(db, session.id, "assistant", "")
-                    msg_id = msg_obj.id
-                    msg_id_sent = True
-                    
-                    # Send initial message format to UI
-                    await manager.send_personal_message({
-                        "type": "message",
-                        "message": {
-                            "id": msg_id,
-                            "role": "assistant",
-                            "content": "",
-                            "created_at": msg_obj.created_at.isoformat()
-                        }
-                    }, user_id)
-                
-                # Stream chunk to UI
-                await manager.send_personal_message({
-                    "type": "message_chunk",
-                    "id": msg_id,
-                    "content": delta.content
-                }, user_id)
-
-        if is_tool_call:
-            # Reconstruct tool calls
-            assembled_tool_calls = list(tool_calls_buffer.values())
-            
-            tool_calls_data = {
-                "calls": assembled_tool_calls
+        if response.usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens or 0,
+                "completion_tokens": response.usage.completion_tokens or 0,
+                "total_tokens": response.usage.total_tokens or 0,
             }
-            store_message(db, session.id, "assistant", content_buffer, tool_calls_data)
+        raw = response.choices[0].message.content.strip()
+        # Find the first '{' and last '}' to extract just the JSON
+        start_idx = raw.find('{')
+        end_idx = raw.rfind('}')
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            raw = raw[start_idx:end_idx + 1]
+        data = json.loads(raw)
+        data["usage"] = usage
+        return data
+    except Exception as e:
+        logger.error("Classifier failed: %s", e)
+        return {"mode": "simple", "role": "general", "response": None, "task_summary": user_message, "usage": usage}
 
-            # Flatten tool call for next loop iteration
-            func_names = [tc.get("function", {}).get("name", "unknown") for tc in assembled_tool_calls]
-            flattened_content = content_buffer or ""
-            if func_names:
-                flattened_content += f"\n[Called tools: {', '.join(func_names)}]"
 
-            messages.append({
-                "role": "assistant",
-                "content": flattened_content.strip() or "Processed tool.",
-            })
-
-            should_break = False
-            for tc in assembled_tool_calls:
-                tool_name = tc["function"]["name"]
-                
-                try:
-                    arguments = json.loads(tc["function"]["arguments"])
-                except json.JSONDecodeError:
-                    arguments = {}
-
-                if tool_name == "ask_user_question":
-                    questions = arguments.get("questions", [])
-                    if isinstance(questions, str):
-                        questions = [questions]
-                    for q in questions:
-                        await manager.send_personal_message({"type": "question", "question": q}, user_id)
-                    should_break = True
-                else:
-                    await manager.send_personal_message({"type": "status", "message": f"Running {tool_name}..."}, user_id)
-
-                try:
-                    result = await asyncio.to_thread(handle_tool_call, tool_name, arguments, db, user_id)
-                except Exception as e:
-                    result = json.dumps({"error": str(e)})
-
-                store_message(db, session.id, "tool", result, {"tool_call_id": tc["id"], "name": tool_name})
-
-                # Flatten tool result as user message
-                messages.append({
-                    "role": "user",
-                    "content": f"[Tool Result for {tool_name}]: {result or ''}",
-                })
-            
-            if should_break:
-                return
-        else:
-            final_text = content_buffer
-            if not msg_id_sent:
-                # If content was streamed too fast or empty, create final message
-                msg_obj = store_message(db, session.id, "assistant", final_text)
-                await manager.send_personal_message({
-                    "type": "message",
-                    "message": {
-                        "id": msg_obj.id,
-                        "role": "assistant",
-                        "content": final_text,
-                        "created_at": msg_obj.created_at.isoformat()
-                    }
-                }, user_id)
-            else:
-                # Update the stored placeholder message with final content
-                msg_obj = db.query(ChatMessage).filter(ChatMessage.id == msg_id).first()
-                if msg_obj:
-                    msg_obj.content = final_text
-                    db.commit()
-
-            session.updated_at = datetime.now(IST)
-            db.commit()
-            return
-
-    fallback = "I've reached my processing limit. Here's what I did so far."
-    msg_obj = store_message(db, session.id, "assistant", fallback)
-    await manager.send_personal_message({
-        "type": "message",
-        "message": {
-            "id": msg_obj.id,
-            "role": "assistant",
-            "content": fallback,
-            "created_at": msg_obj.created_at.isoformat()
-        }
-    }, user_id)
+async def _send_usage(user_id: int, agents: list[str], usage: dict) -> None:
+    await manager.send_personal_message({"type": "usage", "agents": agents, "tokens": usage}, user_id)

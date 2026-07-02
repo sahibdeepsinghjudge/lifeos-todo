@@ -82,7 +82,6 @@ def create_todo(db: Session, user_id: int, data: TodoCreate) -> Todo:
     # Convert timezone-aware datetimes to local (IST) before making naive
     due_date = data.due_date
     if isinstance(due_date, datetime) and due_date.tzinfo is not None:
-        from core.config import IST
         due_date = due_date.astimezone(IST).replace(tzinfo=None)
 
     todo = Todo(
@@ -142,13 +141,11 @@ def list_todos(
 
     if due_before:
         if due_before.tzinfo is not None:
-            from core.config import IST
             due_before = due_before.astimezone(IST).replace(tzinfo=None)
         query = query.filter(Todo.due_date <= due_before)
 
     if due_after:
         if due_after.tzinfo is not None:
-            from core.config import IST
             due_after = due_after.astimezone(IST).replace(tzinfo=None)
         query = query.filter(Todo.due_date >= due_after)
 
@@ -181,7 +178,6 @@ def update_todo(db: Session, user_id: int, todo_id: int, data: TodoUpdate) -> To
             value = value.value
         elif isinstance(value, datetime) and value.tzinfo is not None:
             # Convert timezone-aware datetimes to local (IST) before making naive
-            from core.config import IST
             value = value.astimezone(IST).replace(tzinfo=None)
         setattr(todo, field, value)
 

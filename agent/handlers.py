@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from core.config import IST
 
@@ -15,7 +15,7 @@ from apps.tags import service as tag_service
 
 def handle_tool_call(tool_name: str, arguments: dict, db: Session, user_id: int) -> str:
     """Dispatch a tool call to the appropriate service function. Returns JSON string result."""
-
+    print(f"CALLING TOOL {tool_name} with args {arguments}")
     if tool_name == "create_todo":
         # Extract tags if provided
         tag_names = arguments.pop("tags", [])
