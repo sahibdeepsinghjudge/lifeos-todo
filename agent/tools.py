@@ -25,7 +25,7 @@ TOOLS = [
                         "description": "Due date in ISO format (YYYY-MM-DDTHH:MM:SS)",
                     },
                     "is_reminder": {
-                        "type": "boolean",
+                        "type": ["boolean", "string"],
                         "description": "Set to true if this task is a reminder/alert instead of a standard todo.",
                     },
                     "tags": {
@@ -111,7 +111,7 @@ TOOLS = [
                         "description": "New due date in ISO format (YYYY-MM-DDTHH:MM:SS)",
                     },
                     "is_reminder": {
-                        "type": "boolean",
+                        "type": ["boolean", "string"],
                         "description": "Set to true if this task should be converted to a reminder/alert.",
                     },
                 },
@@ -159,7 +159,7 @@ TOOLS = [
                         "description": "Filter by tag name",
                     },
                     "is_reminder": {
-                        "type": "boolean",
+                        "type": ["boolean", "string"],
                         "description": "Filter by whether it is a reminder (true) or standard task (false). If omitted, returns both.",
                     },
                     "due_before": {
@@ -175,7 +175,7 @@ TOOLS = [
                         "description": "Search query to match against todo title and description",
                     },
                     "overdue": {
-                        "type": "boolean",
+                        "type": ["boolean", "string"],
                         "description": "If true, return only overdue todos",
                     },
                 },

@@ -31,10 +31,6 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "qwen/qwen3.6-27b"
     GROQ_LIGHT_MODEL: str = "llama-3.1-8b-instant"
 
-    # Agent pipeline
-    AGENT_MAX_DEPTH: int = 10       # max tool-call iterations per task
-    AGENT_STEP_DELAY: float = 1.0  # seconds between tasks to avoid rate limits
-
     # Dev mode
     DEV_MODE: bool = True
 

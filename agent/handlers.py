@@ -13,6 +13,17 @@ from apps.todo.schemas import TodoCreate, TodoUpdate, SubtaskCreate, RecurrenceC
 from apps.tags import service as tag_service
 
 
+def _coerce_bool(value):
+    """Coerce a possibly-stringified boolean to a real bool.
+
+    Some models emit booleans as strings ("true"/"false") in tool calls; this
+    normalizes them so downstream validation doesn't choke.
+    """
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes")
+    return value
+
+
 def handle_tool_call(tool_name: str, arguments: dict, db: Session, user_id: int) -> str:
     """Dispatch a tool call to the appropriate service function. Returns JSON string result."""
     print(f"CALLING TOOL {tool_name} with args {arguments}")
@@ -22,6 +33,8 @@ def handle_tool_call(tool_name: str, arguments: dict, db: Session, user_id: int)
         # Parse due_date if string
         if arguments.get("due_date"):
             arguments["due_date"] = datetime.fromisoformat(arguments["due_date"])
+        if "is_reminder" in arguments:
+            arguments["is_reminder"] = _coerce_bool(arguments["is_reminder"])
         data = TodoCreate(**arguments)
         todo = todo_service.create_todo(db, user_id, data)
         # Attach tags
@@ -47,6 +60,8 @@ def handle_tool_call(tool_name: str, arguments: dict, db: Session, user_id: int)
         todo_id = arguments.pop("todo_id")
         if arguments.get("due_date"):
             arguments["due_date"] = datetime.fromisoformat(arguments["due_date"])
+        if "is_reminder" in arguments:
+            arguments["is_reminder"] = _coerce_bool(arguments["is_reminder"])
         data = TodoUpdate(**arguments)
         todo = todo_service.update_todo(db, user_id, todo_id, data)
         return json.dumps({"id": todo.id, "title": todo.title, "status": "updated"})
@@ -64,6 +79,10 @@ def handle_tool_call(tool_name: str, arguments: dict, db: Session, user_id: int)
             arguments["due_before"] = datetime.fromisoformat(arguments["due_before"])
         if arguments.get("due_after"):
             arguments["due_after"] = datetime.fromisoformat(arguments["due_after"])
+        if "is_reminder" in arguments:
+            arguments["is_reminder"] = _coerce_bool(arguments["is_reminder"])
+        if "overdue" in arguments:
+            arguments["overdue"] = _coerce_bool(arguments["overdue"])
         todos = todo_service.list_todos(db, user_id, **arguments)
         return json.dumps([
             {
@@ -142,14 +161,19 @@ def handle_tool_call(tool_name: str, arguments: dict, db: Session, user_id: int)
         return json.dumps({"success": True, "tag": tag, "context": context})
 
     elif tool_name == "delete_user_context":
+        from apps.auth.models import User
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return json.dumps({"error": "User not found"})
+
         tag = arguments.get("tag")
         prefs = {}
         if user.preferences:
             try:
                 prefs = json.loads(user.preferences)
-            except:
+            except json.JSONDecodeError:
                 pass
-        
+
         if tag in prefs:
             del prefs[tag]
             user.preferences = json.dumps(prefs)

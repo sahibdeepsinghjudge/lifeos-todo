@@ -158,6 +158,22 @@ def list_subtasks(
     return [_todo_to_response(db, s) for s in subtasks]
 
 
+@router.post("/{todo_id}/suggest-subtasks")
+async def suggest_subtasks_for_todo(
+    todo_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """AI-suggested subtask titles for a task (not persisted until the user adds them)."""
+    from agent.suggestions import suggest_subtasks
+
+    todo = service.get_todo(db, user.id, todo_id)
+    if todo.parent_id is not None:
+        return {"suggestions": []}
+    suggestions = await suggest_subtasks(todo)
+    return {"suggestions": suggestions}
+
+
 # ── Completion ───────────────────────────────────────────────────────────────
 
 

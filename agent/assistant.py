@@ -1,52 +1,46 @@
-"""Complex agent — handles multi-step dependent workflows using the advanced model."""
+"""The Phagan assistant — a single RAG-grounded agent for day planning.
+
+Answers from the user-data snapshot injected into its system prompt and
+performs simple single actions (create/edit/complete todos, reminders, tags)
+via tools. Multi-step workflows are intentionally out of scope.
+"""
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 
-from core.config import settings
-from agent.prompts import COMPLEX_AGENT_PROMPT, ROLE_PROMPTS
+from agent.prompts import ASSISTANT_PROMPT
 from agent.loop_utils import call_model_stream, handle_tool_calls, send_final
 
 logger = logging.getLogger(__name__)
 
+MAX_TOOL_ROUNDS = 5
 
-async def run_complex_agent(
+
+async def run_assistant(
     client: AsyncOpenAI,
     db: Session,
     user_id: int,
     session_id: int,
     history: list[dict],
-    role: str,
     current_time_str: str,
-    user_prefs: str | None,
+    user_context: str,
     model_name: str,
-    max_depth: int | None = None,
 ) -> dict:
-    """Run the advanced model with tools for multi-step dependent workflows.
+    """Run the assistant loop until it produces a final text reply.
 
     Returns:
         {"text": str | None, "usage": dict}
     """
-    if max_depth is None:
-        max_depth = settings.AGENT_MAX_DEPTH
-
-    if role not in ROLE_PROMPTS:
-        role = "general"
-
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-    system_prompt = (
-        f"{COMPLEX_AGENT_PROMPT.format(current_date=current_time_str)}\n\n"
-        f"Role: {ROLE_PROMPTS[role]}"
+    system_prompt = ASSISTANT_PROMPT.format(
+        current_date=current_time_str,
+        user_context=user_context,
     )
-
-    if user_prefs:
-        system_prompt += f"\n\nUser context:\n{user_prefs}"
 
     messages: list[dict] = [{"role": "system", "content": system_prompt}] + history
 
@@ -54,8 +48,8 @@ async def run_complex_agent(
     recent_calls: list[tuple[str, str]] = []
 
     while True:
-        if tool_rounds >= max_depth:
-            fallback = "I've reached my processing limit for this workflow. Here's what I did so far."
+        if tool_rounds >= MAX_TOOL_ROUNDS:
+            fallback = "I've done what I can for this request — let me know if you'd like anything adjusted."
             await send_final(db, session_id, user_id, fallback)
             return {"text": fallback, "usage": usage}
 
@@ -87,7 +81,3 @@ async def run_complex_agent(
 
         if should_stop:
             return {"text": None, "usage": usage}
-
-        # Rate-limit delay between tool iterations for complex tasks
-        if settings.AGENT_STEP_DELAY > 0:
-            await asyncio.sleep(settings.AGENT_STEP_DELAY)

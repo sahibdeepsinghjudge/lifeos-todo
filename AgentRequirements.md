@@ -1,19 +1,35 @@
-User enters propmts.
-Classify the prompt as simple (can be handled directly using single agent) or complex (needs multiple agents).
-if task is simple create task and return response else start agent work
-Agent work:
+# Phagan Assistant — Design
 
-1. Analyze the prompt.
-2. Decide the role of the agent based on the user's input. Use daily_planner for daily tasks, gym_trainer for fitness tasks, budget_planner for financial tasks, house_maker for home tasks, analyst for analysis tasks, product_manager for project management tasks, and general for general tasks. If no role matches use general
-3. Use available set of tools where required and do not rely on the general data, clairfy from the user when required
-4. A simple task for us is straight forward tasks which has no dependecy on any other task. This can be creating a todo item, changing the time of the todo, making it repetive or updating the description of the task.
+The assistant is a single RAG-first agent whose job is to help the user plan
+their day. There is no classifier and no multi-agent workflow anymore.
 
-If task is complex which means tasks depnds on each other and a prompt has multiple things like researching the web asking questions and then using the results to create a task and then make sub tasks in it then use multi agents and personas.
+## Flow
 
-1. Analyse the propmt
-2. break to seprate independent tasks
-3. decide a workflow loop like if user wants to prepare grocery list to make rajma, the agent will search web -> get ingredients -> create task -> add these items as subtasks.
-   This is the whole workflow.
-4. reply accordingly to the user. and only change the mode from complex to simple when the task is done.
+1. User sends a message over the `/agent/ws` WebSocket.
+2. The orchestrator retrieves a snapshot of the user's data (overdue / today /
+   upcoming / unscheduled tasks, tags, saved preferences) and injects it into
+   the system prompt — see `agent/context.py`. This is the RAG step: most
+   questions ("what should I focus on?", "what's overdue?") are answered
+   directly from the snapshot with zero tool calls.
+3. The assistant (`agent/assistant.py`) streams its reply. For action requests
+   it may call simple, single-action tools (max 5 rounds):
+   - create_todo / update_todo / complete_todo / delete_todo
+   - create_subtask, set_recurrence, add_tag_to_todo, list_tags
+   - mark as reminder (via `is_reminder` on create/update)
+   - save_user_context / delete_user_context
+   - ask_user_question (for clarification via the app's question dialog)
+4. Out of scope by design: web research, multi-step workflows, bulk task
+   generation. The prompt instructs the model to do the simple part and say
+   so when asked for more.
 
-Use light model for simple replies and direct tool usage.
+## Subtask suggestions
+
+`POST /todos/{id}/suggest-subtasks` uses the light model to propose 3–5
+subtask titles for a task (see `agent/suggestions.py`). The mobile app shows
+these as tappable chips on the task-details screen; nothing is persisted
+until the user taps one.
+
+## Models
+
+Configured in `core/config.py` (`AI_PROVIDER` = groq | gemini). The main
+model powers the chat assistant; the light model powers subtask suggestions.
