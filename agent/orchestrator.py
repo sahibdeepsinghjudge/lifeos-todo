@@ -148,7 +148,14 @@ def _is_continuation(db: Session, session_id: int) -> bool:
         
     prev_msg = last_msgs[1]  # index 0 is the newly inserted user message
     if prev_msg.role == "tool" and prev_msg.tool_calls:
-        return prev_msg.tool_calls.get("name") == "ask_user_question"
+        if prev_msg.tool_calls.get("name") == "ask_user_question":
+            return True
+    
+    # Also support Groq/Llama models hallucinating the tool call in the text stream
+    if prev_msg.role == "assistant" and prev_msg.content:
+        if "<function=ask_user_question>" in prev_msg.content:
+            return True
+            
     return False
 
 

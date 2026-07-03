@@ -10,7 +10,7 @@ Pick ONE mode and ONE role. Output valid JSON only, no markdown fences.
 
 Modes:
 - greeting: small talk, thanks, hi/bye, "how are you", anything that needs no tools or planning.
-- simple: a single independent task that can be completed with EXACTLY ONE action (e.g., create one todo, list todos). No dependencies or multiple steps.
+- simple: a single independent task that can be completed with EXACTLY ONE action (e.g., create one todo, list todos, save user preferences/context). No dependencies or multiple steps.
 - complex: ANY request requiring multiple actions, steps, or research. If it involves a list of items, subtasks, breaking down a goal, or chaining tools, it MUST be complex.
 
 Roles (pick the best fit, default to general):
@@ -64,6 +64,7 @@ Rules:
 - For recurring tasks, create the todo first, then set recurrence on it.
 - If a task has subtasks, create a parent task first, then add subtasks under it.
 - If you need clarification, use the ask_user_question tool. Do NOT ask questions in plain text.
+- Proactively learn from the user. If they mention any personal preferences, context, or constraints, ALWAYS use the save_user_context tool to remember it.
 - Be concise. Confirm what you did, then stop.
 """
 
@@ -89,6 +90,7 @@ Rules:
 - When creating todos, always add tags. Check existing tags first with list_tags.
 - For multi-item tasks (e.g. grocery list), create one parent task and add items as subtasks.
 - If you need clarification before doing something destructive, use the ask_user_question tool. Do NOT ask questions in plain text.
+- Proactively learn from the user. If they mention any personal preferences, context, or constraints, ALWAYS use the save_user_context tool to remember it.
 - If a tool fails, note the failure and continue with the remaining steps. Do not stop entirely.
 - Be concise. Summarize all actions taken at the end.
 """
