@@ -16,6 +16,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class GoogleLoginRequest(BaseModel):
+    id_token: str
+
+
 class UpdateProfileRequest(BaseModel):
     name: str | None = None
     email: EmailStr | None = None
@@ -32,6 +36,9 @@ class UserResponse(BaseModel):
     email: str
     is_active: bool
     preferences: str | None = None
+    auth_provider: str = "password"
+    subscription_status: str = "none"
+    subscription_plan: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

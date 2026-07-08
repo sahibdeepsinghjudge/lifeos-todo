@@ -90,17 +90,30 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 from apps.auth.router import router as auth_router  # noqa: E402
 from apps.tags.router import router as tags_router  # noqa: E402
 from apps.todo.router import router as todo_router  # noqa: E402
+from apps.billing.router import router as billing_router  # noqa: E402
 from agent.router import router as agent_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(tags_router)
 app.include_router(todo_router)
+app.include_router(billing_router)
 app.include_router(agent_router)
 
 
 # ---------------------------------------------------------------------------
-# Health check
+# Health check & app metadata
 # ---------------------------------------------------------------------------
 @app.get("/health", tags=["Health"])
 def health_check():
     return {"status": "ok", "app": "Phagan AI"}
+
+
+@app.get("/meta", tags=["Health"])
+def app_meta():
+    """App/build metadata for the mobile About screen and force-update checks."""
+    return {
+        "app": "Phagan AI",
+        "version": settings.APP_VERSION,
+        "build_number": settings.APP_BUILD_NUMBER,
+        "min_supported_build": settings.MIN_SUPPORTED_BUILD,
+    }

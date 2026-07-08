@@ -31,6 +31,22 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "qwen/qwen3.6-27b"
     GROQ_LIGHT_MODEL: str = "llama-3.1-8b-instant"
 
+    # Google Sign-In: comma-separated OAuth client IDs allowed as `aud` in
+    # Google ID tokens (web + android + ios client ids). Empty disables the
+    # audience check (dev only).
+    GOOGLE_CLIENT_IDS: str = ""
+
+    # App metadata served to clients via GET /meta
+    APP_VERSION: str = "1.0.0"
+    APP_BUILD_NUMBER: int = 1
+    # Oldest mobile build allowed to talk to this backend (for force-update UX)
+    MIN_SUPPORTED_BUILD: int = 1
+
+    # Billing
+    TRIAL_DAYS: int = 3
+    PRICE_MONTHLY_INR: int = 149
+    PRICE_YEARLY_INR: int = 1499
+
     # Dev mode
     DEV_MODE: bool = True
 

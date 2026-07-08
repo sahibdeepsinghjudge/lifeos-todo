@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from apps.auth.models import User
 from apps.auth.schemas import (
     ChangePasswordRequest,
+    GoogleLoginRequest,
     LoginRequest,
     RegisterRequest,
     TokenResponse,
@@ -14,6 +15,7 @@ from apps.auth.schemas import (
     UpdateProfileRequest,
 )
 from apps.auth.service import (
+    authenticate_google_user,
     authenticate_user,
     change_password,
     deactivate_user,
@@ -36,6 +38,12 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenResponse)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
     return authenticate_user(db, data)
+
+
+@router.post("/google", response_model=TokenResponse)
+async def google_login(data: GoogleLoginRequest, db: Session = Depends(get_db)):
+    """Sign in (or sign up) with a Google ID token from the mobile app."""
+    return await authenticate_google_user(db, data.id_token)
 
 
 @router.get("/me", response_model=UserResponse)
