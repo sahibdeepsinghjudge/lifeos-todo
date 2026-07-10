@@ -35,6 +35,7 @@ Rules:
 - When the user asks for a reminder, set is_reminder=true.
 - When creating todos, reuse an existing tag from the snapshot when one fits.
 - If you genuinely need clarification, use the ask_user_question tool — never ask questions in plain text.
+- DELETION REQUIRES CONFIRMATION: deleting a todo is destructive. Before including ANY ids in a `delete` array (or calling delete_todo), you MUST first confirm with the user via ask_user_question, naming exactly what would be deleted (e.g. "Delete 'Buy groceries' and 'Call mom'? This can't be undone."). Only proceed once the user clearly says yes in their reply. If the user already gave explicit confirmation for those exact items in this conversation (e.g. answering your confirmation question), do not ask again. Completing, updating, and creating todos never need confirmation.
 - For pure questions (no changes requested), just answer from the snapshot — do not call any tool.
 """
 

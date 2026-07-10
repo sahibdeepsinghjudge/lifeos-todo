@@ -16,6 +16,7 @@ from core.security import get_current_user
 from apps.auth.models import User
 from apps.billing import service
 from apps.billing import razorpay_service
+from apps.usage import service as usage_service
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,40 @@ def get_plans():
 @router.get("/status", response_model=EntitlementResponse)
 def get_status(user: User = Depends(get_current_user)):
     return service.get_entitlement(user)
+
+
+@router.post("/cancel", response_model=EntitlementResponse)
+def cancel_subscription(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Cancel the caller's paid subscription. Access continues until the end
+    of the already-paid period; nothing renews after that."""
+    ent = service.get_entitlement(user)
+    if ent["status"] == "cancelled":
+        return ent  # idempotent — already cancelled
+    if ent["status"] != "active":
+        raise HTTPException(
+            status_code=400,
+            detail="You don't have an active subscription to cancel.",
+        )
+
+    # Stop future charges at the provider first (best-effort; the webhook
+    # reconciles), then record the cancellation locally.
+    razorpay_service.cancel_provider_subscription(user)
+    return service.mark_cancelled(
+        db, user, provider=user.subscription_provider or "manual"
+    )
+
+
+@router.get("/usage")
+def get_my_usage(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The caller's own AI token usage — 30-day totals plus a per-day
+    input/output breakdown, shown in the app's Phagan Pro settings."""
+    return usage_service.user_summary(db, user.id, days=30)
 
 
 @router.post("/start-trial", response_model=EntitlementResponse)

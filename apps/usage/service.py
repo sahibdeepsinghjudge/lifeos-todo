@@ -76,6 +76,59 @@ def daily_series(db: Session, days: int = 30) -> list[dict]:
     ]
 
 
+def user_summary(db: Session, user_id: int, days: int = 30) -> dict:
+    """One user's token usage: totals plus a per-day series for `days` days.
+
+    Powers the usage card in the app's Phagan Pro settings. Days with no
+    usage are omitted from the series (the client renders them as zero).
+    """
+    since = datetime.now(IST).date() - timedelta(days=days - 1)
+
+    totals_row = (
+        db.query(
+            func.coalesce(func.sum(TokenUsage.prompt_tokens), 0),
+            func.coalesce(func.sum(TokenUsage.completion_tokens), 0),
+            func.coalesce(func.sum(TokenUsage.total_tokens), 0),
+            func.count(TokenUsage.id),
+        )
+        .filter(TokenUsage.user_id == user_id, TokenUsage.usage_date >= since)
+        .one()
+    )
+
+    daily_rows = (
+        db.query(
+            TokenUsage.usage_date,
+            func.coalesce(func.sum(TokenUsage.prompt_tokens), 0),
+            func.coalesce(func.sum(TokenUsage.completion_tokens), 0),
+            func.coalesce(func.sum(TokenUsage.total_tokens), 0),
+            func.count(TokenUsage.id),
+        )
+        .filter(TokenUsage.user_id == user_id, TokenUsage.usage_date >= since)
+        .group_by(TokenUsage.usage_date)
+        .order_by(TokenUsage.usage_date)
+        .all()
+    )
+
+    return {
+        "days": days,
+        "since": since.isoformat(),
+        "prompt_tokens": int(totals_row[0]),
+        "completion_tokens": int(totals_row[1]),
+        "total_tokens": int(totals_row[2]),
+        "turns": int(totals_row[3]),
+        "daily": [
+            {
+                "date": r[0].isoformat(),
+                "prompt_tokens": int(r[1]),
+                "completion_tokens": int(r[2]),
+                "total_tokens": int(r[3]),
+                "turns": int(r[4]),
+            }
+            for r in daily_rows
+        ],
+    }
+
+
 def top_users(db: Session, limit: int = 20) -> list[dict]:
     """Highest token-consuming users."""
     from apps.auth.models import User

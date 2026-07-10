@@ -92,6 +92,29 @@ def create_subscription(db: Session, user: User, plan: str) -> dict:
     }
 
 
+def cancel_provider_subscription(user: User) -> bool:
+    """Best-effort cancel of the user's subscription at Razorpay, scheduled
+    for cycle end so they keep what they paid for. Returns False only when
+    Razorpay rejected the cancel — the caller decides how loud to be (the
+    webhook `subscription.cancelled` event reconciles state either way)."""
+    if not user.razorpay_subscription_id:
+        return True  # nothing provider-side to cancel (manual/dev grants)
+    try:
+        client = _client()
+        client.subscription.cancel(
+            user.razorpay_subscription_id, {"cancel_at_cycle_end": 1}
+        )
+        return True
+    except Exception as e:  # noqa: BLE001 — provider errors must not 500 the app
+        # An already-cancelled/completed subscription errors here too; treat
+        # any failure as "record locally, reconcile via webhook".
+        logger.warning(
+            "Razorpay cancel failed for user %s (sub %s): %s",
+            user.id, user.razorpay_subscription_id, e,
+        )
+        return False
+
+
 def verify_webhook_signature(body: bytes, signature: str | None) -> bool:
     """HMAC-SHA256 verify a Razorpay webhook against RAZORPAY_WEBHOOK_SECRET."""
     secret = settings.RAZORPAY_WEBHOOK_SECRET

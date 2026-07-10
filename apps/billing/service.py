@@ -37,10 +37,14 @@ def get_entitlement(user: User) -> dict:
     """Compute the user's effective subscription state."""
     now = _now()
 
-    # Paid subscription takes precedence.
+    # Paid subscription takes precedence. A cancelled plan stays entitled
+    # until the paid-for period ends, but is surfaced as "cancelled" so the
+    # app can show "ends on X" instead of "renews on X".
     if user.subscription_expires_at and user.subscription_expires_at > now:
         return {
-            "status": "active",
+            "status": "cancelled"
+            if user.subscription_status == "cancelled"
+            else "active",
             "plan": user.subscription_plan,
             "expires_at": user.subscription_expires_at,
             "trial_available": False,

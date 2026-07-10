@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_IDS: str = ""
 
     # App metadata served to clients via GET /meta
-    APP_VERSION: str = "1.0.0"
-    APP_BUILD_NUMBER: int = 1
+    APP_VERSION: str = "0.2.0B"
+    APP_BUILD_NUMBER: int = 2
     # Oldest mobile build allowed to talk to this backend (for force-update UX)
     MIN_SUPPORTED_BUILD: int = 1
 
