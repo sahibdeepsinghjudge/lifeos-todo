@@ -42,7 +42,11 @@ def get_recent_messages(db: Session, session_id: int, limit: int = 40) -> list[d
     for msg in messages_db:
         if msg.role == "tool":
             tool_call_id = msg.tool_calls.get("tool_call_id", "") if msg.tool_calls else ""
-            tool_name = msg.tool_calls.get("name", "tool") if msg.tool_calls else "tool"
+            tool_name = msg.tool_calls.get("name", "") if msg.tool_calls else ""
+            # Gemini requires non-empty name on every function_response;
+            # skip malformed tool results that would cause a 400.
+            if not tool_name or not tool_call_id:
+                continue
             openai_messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call_id,
@@ -51,17 +55,21 @@ def get_recent_messages(db: Session, session_id: int, limit: int = 40) -> list[d
             })
         elif msg.role == "assistant" and msg.tool_calls:
             calls = msg.tool_calls.get("calls", [])
-            # Reconstruct the tool_calls list as expected by OpenAI SDK
+            # Reconstruct the tool_calls list as expected by OpenAI SDK.
+            # Filter out entries with missing function names (Gemini rejects them).
             native_calls = []
             for c in calls:
                 if isinstance(c, dict):
+                    func = c.get("function", {})
+                    if not func.get("name"):
+                        continue
                     native_calls.append({
                         "id": c.get("id"),
                         "type": "function",
-                        "function": c.get("function", {})
+                        "function": func,
                     })
             
-            assistant_msg = {
+            assistant_msg: dict = {
                 "role": "assistant",
                 "content": msg.content or None,
             }
@@ -74,7 +82,34 @@ def get_recent_messages(db: Session, session_id: int, limit: int = 40) -> list[d
                 "role": msg.role,
                 "content": msg.content or "",
             })
-    return openai_messages
+
+    # Final pass: ensure every assistant message that declares tool_calls has
+    # a matching tool-result message immediately after it. Gemini rejects
+    # dangling tool_calls without corresponding function_response entries.
+    cleaned: list[dict] = []
+    i = 0
+    while i < len(openai_messages):
+        m = openai_messages[i]
+        if m.get("tool_calls"):
+            expected_ids = {tc["id"] for tc in m["tool_calls"] if tc.get("id")}
+            # Collect the tool results that follow
+            j = i + 1
+            following_tool_ids: set[str] = set()
+            while j < len(openai_messages) and openai_messages[j]["role"] == "tool":
+                following_tool_ids.add(openai_messages[j].get("tool_call_id", ""))
+                j += 1
+            # Only keep if every tool_call has a matching result
+            if expected_ids and expected_ids.issubset(following_tool_ids):
+                cleaned.append(m)
+            else:
+                # Drop the assistant message and its orphaned tool results
+                i = j
+                continue
+        else:
+            cleaned.append(m)
+        i += 1
+
+    return cleaned
 
 
 def store_message(
