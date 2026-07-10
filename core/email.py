@@ -85,6 +85,22 @@ def send_email(to: str, subject: str, html: str) -> bool:
 
 # ── Specific transactional emails ─────────────────────────────────────────
 
+def send_verification_otp(to: str, name: str, code: str) -> bool:
+    body = (
+        f"Hi {name or 'there'},<br><br>"
+        "Use this code to verify your email address and finish setting up "
+        "your Phagan account:<br><br>"
+        f"<div style='font-size:32px;font-weight:bold;letter-spacing:8px;"
+        f"text-align:center;padding:16px 0'>{code}</div>"
+        "This code expires in 10 minutes. If you didn't create a Phagan "
+        "account, you can safely ignore this email."
+    )
+    return send_email(
+        to, f"{code} is your Phagan verification code",
+        _shell("Verify your email", body, None, None),
+    )
+
+
 def send_welcome(to: str, name: str) -> bool:
     body = (
         f"Hi {name or 'there'},<br><br>"

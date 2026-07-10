@@ -20,6 +20,15 @@ class GoogleLoginRequest(BaseModel):
     id_token: str
 
 
+class VerifyOtpRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+
+
+class ResendOtpRequest(BaseModel):
+    email: EmailStr
+
+
 class UpdateProfileRequest(BaseModel):
     name: str | None = None
     email: EmailStr | None = None
@@ -37,6 +46,7 @@ class UserResponse(BaseModel):
     is_active: bool
     preferences: str | None = None
     auth_provider: str = "password"
+    email_verified: bool = True
     subscription_status: str = "none"
     subscription_plan: str | None = None
     created_at: datetime

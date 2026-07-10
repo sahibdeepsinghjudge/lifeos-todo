@@ -9,10 +9,12 @@ from apps.auth.schemas import (
     GoogleLoginRequest,
     LoginRequest,
     RegisterRequest,
+    ResendOtpRequest,
     TokenResponse,
     UserResponse,
     UpdatePreferencesRequest,
     UpdateProfileRequest,
+    VerifyOtpRequest,
 )
 from apps.auth.service import (
     authenticate_google_user,
@@ -20,6 +22,8 @@ from apps.auth.service import (
     change_password,
     deactivate_user,
     register_user,
+    resend_email_otp,
+    verify_email_otp,
 )
 from core.database import get_db
 from core.security import get_current_user
@@ -33,6 +37,19 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 def register(data: RegisterRequest, db: Session = Depends(get_db)):
     user = register_user(db, data)
     return user
+
+
+@router.post("/verify-otp", response_model=TokenResponse)
+def verify_otp(data: VerifyOtpRequest, db: Session = Depends(get_db)):
+    """Confirm the emailed 6-digit code; returns a login token on success."""
+    return verify_email_otp(db, data.email, data.code)
+
+
+@router.post("/resend-otp")
+def resend_otp(data: ResendOtpRequest, db: Session = Depends(get_db)):
+    """Email a fresh verification code (60s cooldown between sends)."""
+    resend_email_otp(db, data.email)
+    return {"detail": "A new code has been sent to your email."}
 
 
 @router.post("/login", response_model=TokenResponse)

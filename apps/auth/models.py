@@ -21,6 +21,15 @@ class User(Base):
     preferences: Mapped[str | None] = mapped_column(String, nullable=True)
     # 'password' or 'google'
     auth_provider: Mapped[str] = mapped_column(String(20), default="password")
+    # Email OTP verification. New password signups start unverified and must
+    # confirm a 6-digit code emailed to them; Google users are verified by
+    # Google. The code is stored hashed, expires quickly, and allows only a
+    # few attempts before a fresh code is required.
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_otp_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_otp_expires_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    email_otp_attempts: Mapped[int] = mapped_column(default=0)
+    email_otp_sent_at: Mapped[datetime | None] = mapped_column(nullable=True)
     # Billing: 'none' | 'trial' | 'active' — effective entitlement is computed
     # from these fields (see apps.billing.service.get_entitlement).
     subscription_status: Mapped[str] = mapped_column(String(20), default="none")
