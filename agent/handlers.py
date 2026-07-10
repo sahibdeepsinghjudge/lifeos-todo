@@ -27,6 +27,11 @@ def _coerce_bool(value):
 def handle_tool_call(tool_name: str, arguments: dict, db: Session, user_id: int) -> str:
     """Dispatch a tool call to the appropriate service function. Returns JSON string result."""
     print(f"CALLING TOOL {tool_name} with args {arguments}")
+    if tool_name == "apply_todo_changes":
+        # Imported here to avoid a circular import (batch imports this module).
+        from agent.batch import apply_changes
+        return json.dumps(apply_changes(db, user_id, arguments))
+
     if tool_name == "create_todo":
         # Extract tags if provided
         tag_names = arguments.pop("tags", [])

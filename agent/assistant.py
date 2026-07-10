@@ -13,7 +13,13 @@ from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 
 from agent.prompts import ASSISTANT_PROMPT
-from agent.loop_utils import call_model_stream, handle_tool_calls, send_final
+from agent.loop_utils import (
+    call_model_stream,
+    handle_tool_calls,
+    send_final,
+    is_terminal_response,
+    execute_terminal_and_summarize,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +76,21 @@ async def run_assistant(
 
         messages.append(response.assistant_message)
 
+        # Fast path: the model asked only for terminal writes (the common
+        # "create these / update those" case, ideally one apply_todo_changes
+        # call). Execute them and summarize in Python — no second LLM round.
+        if is_terminal_response(response.tool_calls):
+            summary = await execute_terminal_and_summarize(
+                tool_calls=response.tool_calls,
+                db=db,
+                user_id=user_id,
+                session_id=session_id,
+            )
+            await send_final(db, session_id, user_id, summary)
+            return {"text": summary, "usage": usage}
+
+        # Otherwise (reads the model must see, or a clarifying question):
+        # execute and loop back so it can react to the results.
         should_stop = await handle_tool_calls(
             response=response,
             messages=messages,

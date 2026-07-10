@@ -15,8 +15,95 @@ from agent.handlers import handle_tool_call
 from agent.db_ops import store_message
 from agent.ws_manager import manager
 from agent.models import ChatMessage
+from agent.batch import summarize_counts, GRANULAR_COUNT_KEY
 
 logger = logging.getLogger(__name__)
+
+# Tools whose *results the model must read* to continue — these keep the loop
+# going. Everything else is a terminal write we can execute and summarize
+# ourselves without another model round-trip.
+READ_TOOLS = {
+    "list_todos",
+    "get_overdue_todos",
+    "get_summary",
+    "get_today",
+    "get_next_date",
+    "list_tags",
+}
+
+
+def is_terminal_response(tool_calls: list[dict]) -> bool:
+    """True when every call is a terminal write (so we finalize deterministically)."""
+    if not tool_calls:
+        return False
+    names = {tc["function"]["name"] for tc in tool_calls}
+    if "ask_user_question" in names:
+        return False  # clarification takes priority
+    return names.isdisjoint(READ_TOOLS)
+
+
+async def execute_terminal_and_summarize(
+    tool_calls: list[dict],
+    db: Session,
+    user_id: int,
+    session_id: int,
+) -> str:
+    """Run terminal write tools on a worker thread and build a summary in Python.
+
+    No further LLM call is made — the summary is derived from what actually
+    happened. Per-tool failures are captured into the summary, never raised.
+    """
+    await manager.send_personal_message(
+        {"type": "status", "message": "Structure ready — applying your changes…"},
+        user_id,
+    )
+
+    counts: dict[str, int] = {}
+    errors: list[str] = []
+
+    for tc in tool_calls:
+        tool_name = tc["function"]["name"]
+        try:
+            arguments = json.loads(tc["function"]["arguments"])
+        except json.JSONDecodeError:
+            arguments = {}
+
+        await manager.send_personal_message(
+            {"type": "tool_start", "tool": tool_name}, user_id
+        )
+        try:
+            result = await asyncio.to_thread(
+                handle_tool_call, tool_name, arguments, db, user_id
+            )
+            status = "success"
+        except Exception as e:  # noqa: BLE001 — one failed tool must not sink the turn
+            logger.error("Terminal tool '%s' failed: %s (args=%s)", tool_name, e, arguments)
+            result = json.dumps({"error": str(e)})
+            status = "failed"
+        await manager.send_personal_message(
+            {"type": "tool_complete", "tool": tool_name, "status": status}, user_id
+        )
+
+        # Persist the raw result for history/debugging (history endpoint hides
+        # tool rows), then fold it into the running tally.
+        store_message(db, session_id, "tool", result, {"name": tool_name})
+        try:
+            parsed = json.loads(result)
+        except (json.JSONDecodeError, TypeError):
+            parsed = {}
+
+        if tool_name == "apply_todo_changes":
+            for k, v in (parsed.get("counts") or {}).items():
+                counts[k] = counts.get(k, 0) + v
+            errors.extend(parsed.get("errors") or [])
+        elif isinstance(parsed, dict) and parsed.get("error"):
+            errors.append(f"{tool_name}: {parsed['error']}")
+        else:
+            key = GRANULAR_COUNT_KEY.get(tool_name)
+            if key:
+                counts[key] = counts.get(key, 0) + 1
+
+    return summarize_counts(counts, errors)
 
 
 @dataclass

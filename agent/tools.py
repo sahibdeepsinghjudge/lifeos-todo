@@ -2,6 +2,151 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "apply_todo_changes",
+            "description": (
+                "Apply ALL of the user's requested changes in ONE call. Use this "
+                "for any request that creates, updates, completes, deletes, tags, "
+                "or sets recurrence on todos — especially when there is more than "
+                "one change. Put everything the user asked for into a single call; "
+                "do not spread changes across multiple tool calls or turns. "
+                "Resolve every relative date to ISO format yourself first. "
+                "Reference existing todos by the ids in the snapshot."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "create": {
+                        "type": "array",
+                        "description": "New todos to create.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "description": {"type": "string"},
+                                "priority": {
+                                    "type": "string",
+                                    "enum": ["low", "medium", "high", "urgent"],
+                                },
+                                "due_date": {
+                                    "type": "string",
+                                    "description": "ISO format (YYYY-MM-DDTHH:MM:SS).",
+                                },
+                                "is_reminder": {
+                                    "type": ["boolean", "string"],
+                                    "description": "true for a reminder/alert.",
+                                },
+                                "tags": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                                "recurrence": {
+                                    "type": "object",
+                                    "description": "Optional repeat pattern for this new todo.",
+                                    "properties": {
+                                        "frequency": {
+                                            "type": "string",
+                                            "enum": ["daily", "weekly", "monthly"],
+                                        },
+                                        "interval": {"type": "integer"},
+                                        "end_date": {"type": "string"},
+                                    },
+                                    "required": ["frequency"],
+                                },
+                                "subtasks": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Optional subtask titles for this new todo.",
+                                },
+                            },
+                            "required": ["title"],
+                        },
+                    },
+                    "update": {
+                        "type": "array",
+                        "description": "Existing todos to update (by id).",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "todo_id": {"type": "integer"},
+                                "title": {"type": "string"},
+                                "description": {"type": "string"},
+                                "priority": {
+                                    "type": "string",
+                                    "enum": ["low", "medium", "high", "urgent"],
+                                },
+                                "status": {
+                                    "type": "string",
+                                    "enum": ["pending", "in_progress", "completed"],
+                                },
+                                "due_date": {"type": "string"},
+                                "is_reminder": {"type": ["boolean", "string"]},
+                            },
+                            "required": ["todo_id"],
+                        },
+                    },
+                    "complete": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Ids of todos to mark complete.",
+                    },
+                    "delete": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Ids of todos to delete.",
+                    },
+                    "set_recurrence": {
+                        "type": "array",
+                        "description": "Recurrence to set on existing todos.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "todo_id": {"type": "integer"},
+                                "frequency": {
+                                    "type": "string",
+                                    "enum": ["daily", "weekly", "monthly"],
+                                },
+                                "interval": {"type": "integer"},
+                                "end_date": {"type": "string"},
+                            },
+                            "required": ["todo_id", "frequency"],
+                        },
+                    },
+                    "add_tag": {
+                        "type": "array",
+                        "description": "Tags to add to existing todos.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "todo_id": {"type": "integer"},
+                                "tag_name": {"type": "string"},
+                            },
+                            "required": ["todo_id", "tag_name"],
+                        },
+                    },
+                    "save_context": {
+                        "type": "array",
+                        "description": "Lasting facts/preferences to remember about the user.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "tag": {"type": "string"},
+                                "context": {"type": "string"},
+                            },
+                            "required": ["tag", "context"],
+                        },
+                    },
+                    "delete_context": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Tags of saved notes to forget.",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "create_todo",
             "description": "Create a new todo item for the user.",
             "parameters": {
