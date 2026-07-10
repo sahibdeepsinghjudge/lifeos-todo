@@ -47,6 +47,28 @@ class Settings(BaseSettings):
     PRICE_MONTHLY_INR: int = 149
     PRICE_YEARLY_INR: int = 1499
 
+    # Razorpay (web subscriptions). Plan ids are created in the Razorpay
+    # dashboard (Subscriptions → Plans) and pasted here.
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = ""
+    RAZORPAY_PLAN_MONTHLY: str = ""
+    RAZORPAY_PLAN_YEARLY: str = ""
+
+    # Resend (transactional email)
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = "Phagan <hello@happpening.com>"
+    # Days before expiry to send the renewal-reminder email.
+    EXPIRY_REMINDER_DAYS: int = 3
+
+    # Public URLs used in emails / redirects.
+    WEBSITE_URL: str = "https://phagan.happpening.com"
+
+    # Admin dashboard: comma-separated emails allowed into /admin, plus a
+    # basic-auth password for the dashboard itself.
+    ADMIN_EMAILS: str = ""
+    ADMIN_DASHBOARD_PASSWORD: str = ""
+
     # Dev mode
     DEV_MODE: bool = True
 

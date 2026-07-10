@@ -14,6 +14,7 @@ from agent.db_ops import get_or_create_session, get_recent_messages, store_messa
 from agent.assistant import run_assistant
 from agent.ws_manager import manager
 from apps.auth.models import User
+from apps.usage import service as usage_service
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,9 @@ async def run_agent_async(db: Session, user_id: int, user_message: str):
 
     session.updated_at = datetime.now(IST)
     db.commit()
+
+    # Persist this turn's token usage for per-customer metering / admin.
+    usage_service.record_usage(db, user_id, model, result.get("usage"))
 
     await manager.send_personal_message({
         "type": "usage",

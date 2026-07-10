@@ -91,12 +91,14 @@ from apps.auth.router import router as auth_router  # noqa: E402
 from apps.tags.router import router as tags_router  # noqa: E402
 from apps.todo.router import router as todo_router  # noqa: E402
 from apps.billing.router import router as billing_router  # noqa: E402
+from apps.admin.router import router as admin_router  # noqa: E402
 from agent.router import router as agent_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(tags_router)
 app.include_router(todo_router)
 app.include_router(billing_router)
+app.include_router(admin_router)
 app.include_router(agent_router)
 
 

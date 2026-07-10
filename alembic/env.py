@@ -17,6 +17,8 @@ from apps.auth.models import User  # noqa: F401
 from apps.tags.models import Tag, Taggable  # noqa: F401
 from apps.todo.models import Todo, TodoRecurrence  # noqa: F401
 from agent.models import ChatSession, ChatMessage  # noqa: F401
+from apps.billing.models import Payment  # noqa: F401
+from apps.usage.models import TokenUsage  # noqa: F401
 
 # this is the Alembic Config object
 config = context.config
