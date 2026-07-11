@@ -41,6 +41,19 @@ Rules:
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# MODEL ROUTER — a tiny classifier picks light vs heavy for the turn
+# ─────────────────────────────────────────────────────────────────────────
+
+ROUTER_PROMPT = """You route requests for OttoAI, a day-planning assistant, to the right model.
+
+Reply with exactly one letter, nothing else:
+- "L" — light work: answering questions about the user's tasks or day, casual chat, or a small change like creating, editing, or completing a few todos or setting a reminder.
+- "H" — heavy work: planning or restructuring a whole day or week, breaking a big goal into many tasks, reprioritising the entire list, or anything needing multi-step reasoning over many items.
+
+When in doubt, reply "L"."""
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # SUBTASK SUGGESTIONS — light model proposes subtasks for a task
 # ─────────────────────────────────────────────────────────────────────────
 

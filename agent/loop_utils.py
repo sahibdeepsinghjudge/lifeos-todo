@@ -168,13 +168,25 @@ async def call_model_stream(
     is_tool_call = False
     msg_id_sent = False
     msg_id = None
+    # Per-call token counts. Providers disagree on where usage rides: Groq puts
+    # it on a final choices-empty chunk, while Gemini's OpenAI-compat layer
+    # attaches it to the final chunk that still carries a (content-less) choice.
+    # So capture it wherever it appears rather than only when choices is empty.
+    # Overwrite (not accumulate) so a provider that repeats cumulative usage on
+    # each chunk ends on the final totals instead of double-counting; fold into
+    # the running total once after the stream.
+    call_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     async for chunk in stream:
+        if getattr(chunk, "usage", None):
+            cu = chunk.usage
+            call_usage["prompt_tokens"] = cu.prompt_tokens or 0
+            call_usage["completion_tokens"] = cu.completion_tokens or 0
+            call_usage["total_tokens"] = cu.total_tokens or (
+                call_usage["prompt_tokens"] + call_usage["completion_tokens"]
+            )
+
         if not chunk.choices:
-            if hasattr(chunk, "usage") and chunk.usage:
-                usage["prompt_tokens"] += chunk.usage.prompt_tokens or 0
-                usage["completion_tokens"] += chunk.usage.completion_tokens or 0
-                usage["total_tokens"] += chunk.usage.total_tokens or 0
             continue
 
         delta = chunk.choices[0].delta
@@ -198,6 +210,10 @@ async def call_model_stream(
                     "message": {"id": msg_id, "role": "assistant", "content": "", "created_at": msg_obj.created_at.isoformat()},
                 }, user_id)
             await manager.send_personal_message({"type": "message_chunk", "id": msg_id, "content": delta.content}, user_id)
+
+    usage["prompt_tokens"] += call_usage["prompt_tokens"]
+    usage["completion_tokens"] += call_usage["completion_tokens"]
+    usage["total_tokens"] += call_usage["total_tokens"]
 
     if is_tool_call:
         assembled_calls = [buf.assembled for buf in buffers.values()]
