@@ -153,6 +153,9 @@ async def call_model_stream(
             tools=TOOLS,
             tool_choice="auto",
             stream=True,
+            # Gemini's OpenAI-compat layer only reports token counts when this
+            # is set; Groq either honours it or ignores it harmlessly.
+            stream_options={"include_usage": True},
         )
     except Exception as e:
         logger.error("Agent call failed: %s", e)
@@ -195,11 +198,6 @@ async def call_model_stream(
                     "message": {"id": msg_id, "role": "assistant", "content": "", "created_at": msg_obj.created_at.isoformat()},
                 }, user_id)
             await manager.send_personal_message({"type": "message_chunk", "id": msg_id, "content": delta.content}, user_id)
-
-        if hasattr(chunk, "usage") and chunk.usage:
-            usage["prompt_tokens"] += chunk.usage.prompt_tokens or 0
-            usage["completion_tokens"] += chunk.usage.completion_tokens or 0
-            usage["total_tokens"] += chunk.usage.total_tokens or 0
 
     if is_tool_call:
         assembled_calls = [buf.assembled for buf in buffers.values()]
