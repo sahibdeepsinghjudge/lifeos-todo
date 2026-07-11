@@ -79,7 +79,7 @@ def daily_series(db: Session, days: int = 30) -> list[dict]:
 def user_summary(db: Session, user_id: int, days: int = 30) -> dict:
     """One user's token usage: totals plus a per-day series for `days` days.
 
-    Powers the usage card in the app's Phagan Pro settings. Days with no
+    Powers the usage card in the app's OttoAI Pro settings. Days with no
     usage are omitted from the series (the client renders them as zero).
     """
     since = datetime.now(IST).date() - timedelta(days=days - 1)

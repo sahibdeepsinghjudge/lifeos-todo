@@ -1,4 +1,4 @@
-"""The Phagan assistant — a single RAG-grounded agent for day planning.
+"""The OttoAI assistant — a single RAG-grounded agent for day planning.
 
 Answers from the user-data snapshot injected into its system prompt and
 performs simple single actions (create/edit/complete todos, reminders, tags)
@@ -101,4 +101,4 @@ async def run_assistant(
         )
 
         if should_stop:
-            return {"text": None, "usage": usage}
+            return {"text": "Hmmm... got into some loop, try again", "usage": usage}

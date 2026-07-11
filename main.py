@@ -107,14 +107,14 @@ app.include_router(agent_router)
 # ---------------------------------------------------------------------------
 @app.get("/health", tags=["Health"])
 def health_check():
-    return {"status": "ok", "app": "Phagan AI"}
+    return {"status": "ok", "app": "OttoAI"}
 
 
 @app.get("/meta", tags=["Health"])
 def app_meta():
     """App/build metadata for the mobile About screen and force-update checks."""
     return {
-        "app": "Phagan AI",
+        "app": "OttoAI",
         "version": settings.APP_VERSION,
         "build_number": settings.APP_BUILD_NUMBER,
         "min_supported_build": settings.MIN_SUPPORTED_BUILD,

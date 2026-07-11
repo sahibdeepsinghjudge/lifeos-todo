@@ -165,11 +165,11 @@ def dashboard(
     html = f"""\
 <!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Phagan · Admin</title></head>
+<title>OttoAI · Admin</title></head>
 <body style="margin:0;background:{_C_BG};color:{_C_TEXT};
   font-family:-apple-system,Segoe UI,Roboto,sans-serif;padding:28px 20px">
   <div style="max-width:960px;margin:0 auto">
-    <h1 style="color:{_C_ACCENT};font-size:24px;margin:0 0 4px">Phagan · Admin</h1>
+    <h1 style="color:{_C_ACCENT};font-size:24px;margin:0 0 4px">OttoAI · Admin</h1>
     <p style="color:{_C_MUTED};margin:0 0 24px;font-size:14px">
       Subscriptions, revenue &amp; AI token usage.</p>
 

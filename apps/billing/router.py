@@ -94,7 +94,7 @@ def get_my_usage(
     user: User = Depends(get_current_user),
 ):
     """The caller's own AI token usage — 30-day totals plus a per-day
-    input/output breakdown, shown in the app's Phagan Pro settings."""
+    input/output breakdown, shown in the app's OttoAI Pro settings."""
     return usage_service.user_summary(db, user.id, days=30)
 
 

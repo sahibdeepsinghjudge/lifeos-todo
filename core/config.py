@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_IDS: str = ""
 
     # App metadata served to clients via GET /meta
-    APP_VERSION: str = "0.2.0B"
-    APP_BUILD_NUMBER: int = 2
+    APP_VERSION: str = "0.3.0B"
+    APP_BUILD_NUMBER: int = 3
     # Oldest mobile build allowed to talk to this backend (for force-update UX)
     MIN_SUPPORTED_BUILD: int = 1
 
@@ -57,12 +57,12 @@ class Settings(BaseSettings):
 
     # Resend (transactional email)
     RESEND_API_KEY: str = ""
-    EMAIL_FROM: str = "Phagan <hello@happpening.com>"
+    EMAIL_FROM: str = "OttoAI <ottoai@happpening.com>"
     # Days before expiry to send the renewal-reminder email.
     EXPIRY_REMINDER_DAYS: int = 3
 
     # Public URLs used in emails / redirects.
-    WEBSITE_URL: str = "https://phagan.happpening.com"
+    WEBSITE_URL: str = "https://ottoai.happpening.com"
 
     # Admin dashboard: comma-separated emails allowed into /admin, plus a
     # basic-auth password for the dashboard itself.

@@ -3,7 +3,7 @@
 All sending is best-effort and non-blocking-safe: a mail failure logs a
 warning and returns False, it never raises into the caller (a webhook or a
 cron job must not fail because an email bounced). Templates are small inline
-HTML matching Phagan's warm palette — no external assets, so they render in
+HTML matching OttoAI's warm palette — no external assets, so they render in
 every client.
 """
 
@@ -43,14 +43,14 @@ def _shell(title: str, body_html: str, cta_label: str | None = None,
     <table width="480" cellpadding="0" cellspacing="0"
       style="background:{_CARD};border-radius:20px;padding:36px 32px;text-align:left">
       <tr><td style="font-size:22px;font-weight:700;color:{_TERRACOTTA};
-        padding-bottom:6px">Phagan</td></tr>
+        padding-bottom:6px">OttoAI</td></tr>
       <tr><td style="font-size:20px;font-weight:700;color:{_TERRACOTTA};
         padding:10px 0 14px">{title}</td></tr>
       <tr><td style="font-size:15px;line-height:1.6;color:{_BROWN}">{body_html}</td></tr>
       {cta}
       <tr><td style="padding-top:26px;font-size:12px;color:{_AMBER}">
-        You're receiving this because you have a Phagan account.<br>
-        © Phagan · <a href="{settings.WEBSITE_URL}"
+        You're receiving this because you have a OttoAI account.<br>
+        © OttoAI · <a href="{settings.WEBSITE_URL}"
           style="color:{_AMBER}">{settings.WEBSITE_URL.replace('https://','')}</a>
       </td></tr>
     </table>
@@ -89,14 +89,14 @@ def send_verification_otp(to: str, name: str, code: str) -> bool:
     body = (
         f"Hi {name or 'there'},<br><br>"
         "Use this code to verify your email address and finish setting up "
-        "your Phagan account:<br><br>"
+        "your OttoAI account:<br><br>"
         f"<div style='font-size:32px;font-weight:bold;letter-spacing:8px;"
         f"text-align:center;padding:16px 0'>{code}</div>"
-        "This code expires in 10 minutes. If you didn't create a Phagan "
+        "This code expires in 10 minutes. If you didn't create a OttoAI "
         "account, you can safely ignore this email."
     )
     return send_email(
-        to, f"{code} is your Phagan verification code",
+        to, f"{code} is your OttoAI verification code",
         _shell("Verify your email", body, None, None),
     )
 
@@ -104,13 +104,13 @@ def send_verification_otp(to: str, name: str, code: str) -> bool:
 def send_welcome(to: str, name: str) -> bool:
     body = (
         f"Hi {name or 'there'},<br><br>"
-        "Welcome to Phagan — your personal AI day planner. Tell it what your "
+        "Welcome to OttoAI — your personal AI day planner. Tell it what your "
         "day looks like and it builds your todos, reminders and schedule for you."
         "<br><br>Your 3-day free trial is active. Enjoy!"
     )
     return send_email(
-        to, "Welcome to Phagan 🌱",
-        _shell("Welcome aboard", body, "Open Phagan", settings.WEBSITE_URL),
+        to, "Welcome to OttoAI 🌱",
+        _shell("Welcome aboard", body, "Open OttoAI", settings.WEBSITE_URL),
     )
 
 
@@ -120,14 +120,14 @@ def send_payment_success(to: str, name: str, plan: str, amount_inr: int,
     plan_label = "Yearly" if plan == "yearly" else "Monthly"
     body = (
         f"Hi {name or 'there'},<br><br>"
-        f"Your payment for <b>Phagan Pro — {plan_label}</b> "
+        f"Your payment for <b>OttoAI Pro — {plan_label}</b> "
         f"(₹{amount_inr}) was successful. 🎉<br><br>"
         f"Your subscription is active until <b>{when}</b>. "
-        "Thanks for supporting Phagan!"
+        "Thanks for supporting OttoAI!"
     )
     return send_email(
-        to, "Payment received — Phagan Pro is active",
-        _shell("Payment successful", body, "Open Phagan", settings.WEBSITE_URL),
+        to, "Payment received — OttoAI Pro is active",
+        _shell("Payment successful", body, "Open OttoAI", settings.WEBSITE_URL),
     )
 
 
@@ -137,11 +137,11 @@ def send_expiry_reminder(to: str, name: str, days_left: int, expires_at,
     day_word = "day" if days_left == 1 else "days"
     body = (
         f"Hi {name or 'there'},<br><br>"
-        f"Your Phagan Pro subscription ends in <b>{days_left} {day_word}</b> "
+        f"Your OttoAI Pro subscription ends in <b>{days_left} {day_word}</b> "
         f"(on {when}). Renew now so your day-planning never skips a beat."
     )
     return send_email(
-        to, f"Your Phagan Pro renews in {days_left} {day_word}",
+        to, f"Your OttoAI Pro renews in {days_left} {day_word}",
         _shell("Time to renew", body, "Renew subscription", renew_url),
     )
 
@@ -151,10 +151,10 @@ def send_subscription_cancelled(to: str, name: str, expires_at) -> bool:
     tail = f" You'll keep Pro access until <b>{when}</b>." if when else ""
     body = (
         f"Hi {name or 'there'},<br><br>"
-        f"Your Phagan Pro subscription has been cancelled.{tail}<br><br>"
+        f"Your OttoAI Pro subscription has been cancelled.{tail}<br><br>"
         "You can resubscribe any time — we'd love to have you back."
     )
     return send_email(
-        to, "Your Phagan Pro subscription was cancelled",
+        to, "Your OttoAI Pro subscription was cancelled",
         _shell("Subscription cancelled", body, "Resubscribe", settings.WEBSITE_URL),
     )

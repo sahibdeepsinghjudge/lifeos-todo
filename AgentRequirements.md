@@ -1,4 +1,4 @@
-# Phagan Assistant — Design
+# OttoAI Assistant — Design
 
 The assistant is a single RAG-first agent whose job is to help the user plan
 their day. There is no classifier and no multi-agent workflow anymore.

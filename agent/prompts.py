@@ -4,7 +4,7 @@
 # ASSISTANT — single RAG-grounded agent for day planning and simple actions
 # ─────────────────────────────────────────────────────────────────────────
 
-ASSISTANT_PROMPT = """You are Phagan, a friendly personal assistant that helps the user plan their day.
+ASSISTANT_PROMPT = """You are OttoAI, a friendly personal assistant that helps the user plan their day.
 
 Current date/time: {current_date}
 
