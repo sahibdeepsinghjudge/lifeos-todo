@@ -151,12 +151,19 @@ def activate_paid(
     payment_id: str | None = None,
     subscription_id: str | None = None,
     event_id: str | None = None,
+    expires_at_override: datetime | None = None,
     send_receipt: bool = True,
 ) -> dict:
     """Grant/extend a paid plan from a verified payment (any provider).
 
     Idempotent on `event_id`. Records the payment, extends entitlement, resets
     the expiry-reminder flag for the new cycle, and emails a receipt.
+
+    `expires_at_override` sets entitlement expiry to the provider's own
+    authoritative timestamp instead of extending by a fixed plan duration. Used
+    by Google Play, where `expiryTime` (trials, grace periods, proration) is the
+    source of truth; the web/Razorpay path leaves it None and extends by
+    PLAN_DURATIONS.
     """
     duration = PLAN_DURATIONS.get(plan)
     if duration is None:
@@ -176,14 +183,18 @@ def activate_paid(
         return get_entitlement(user)
 
     now = _now()
-    base = user.subscription_expires_at if (
-        user.subscription_expires_at and user.subscription_expires_at > now
-    ) else now
+    if expires_at_override is not None:
+        new_expiry = expires_at_override
+    else:
+        base = user.subscription_expires_at if (
+            user.subscription_expires_at and user.subscription_expires_at > now
+        ) else now
+        new_expiry = base + duration
 
     user.subscription_plan = plan
     user.subscription_status = "active"
     user.subscription_provider = provider
-    user.subscription_expires_at = base + duration
+    user.subscription_expires_at = new_expiry
     user.expiry_reminder_sent_at = None  # fresh cycle → allow a new reminder
     db.commit()
     db.refresh(user)
@@ -221,6 +232,36 @@ def mark_cancelled(
     email.send_subscription_cancelled(
         user.email, user.name, user.subscription_expires_at
     )
+    return get_entitlement(user)
+
+
+def mark_expired(
+    db: Session,
+    user: User,
+    *,
+    provider: str,
+    event: str = "subscription.expired",
+    subscription_id: str | None = None,
+    event_id: str | None = None,
+) -> dict:
+    """End entitlement immediately (revoke/refund/expiry). Unlike
+    `mark_cancelled`, this does not let the paid period run out — access stops
+    now. Used for Google Play REVOKED/EXPIRED notifications."""
+    fresh = _record_payment(
+        db, user,
+        provider=provider, event=event, status_="info",
+        plan=user.subscription_plan, subscription_id=subscription_id,
+        event_id=event_id,
+    )
+    if not fresh:
+        return get_entitlement(user)
+
+    now = _now()
+    if user.subscription_expires_at and user.subscription_expires_at > now:
+        user.subscription_expires_at = now
+    user.subscription_status = "expired"
+    db.commit()
+    db.refresh(user)
     return get_entitlement(user)
 
 

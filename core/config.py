@@ -55,6 +55,24 @@ class Settings(BaseSettings):
     RAZORPAY_PLAN_MONTHLY: str = ""
     RAZORPAY_PLAN_YEARLY: str = ""
 
+    # Google Play Billing (Android in-app subscriptions). The app launches the
+    # Play purchase flow; we verify the resulting purchase token server-side
+    # against the Play Developer API before granting entitlement.
+    #   - PACKAGE_NAME: the Android applicationId (com.sahibdeepjwd.phagan).
+    #   - SERVICE_ACCOUNT_JSON: the full JSON key of a service account granted
+    #     "View financial data / Manage orders" access in Play Console, linked
+    #     via Google Cloud. Pasted as a single-line JSON string (or a path —
+    #     see google_play_service._load_credentials).
+    #   - PRODUCT_MONTHLY / PRODUCT_YEARLY: the subscription product IDs created
+    #     in Play Console (Monetize → Subscriptions), mapped back to our plans.
+    #   - RTDN_VERIFICATION_TOKEN: an optional shared secret we require on the
+    #     Pub/Sub push URL (?token=...) so only Google can post notifications.
+    GOOGLE_PLAY_PACKAGE_NAME: str = "com.sahibdeepjwd.phagan"
+    GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: str = ""
+    GOOGLE_PLAY_PRODUCT_MONTHLY: str = "ottoai_pro_monthly"
+    GOOGLE_PLAY_PRODUCT_YEARLY: str = "ottoai_pro_yearly"
+    GOOGLE_PLAY_RTDN_VERIFICATION_TOKEN: str = ""
+
     # Resend (transactional email)
     RESEND_API_KEY: str = ""
     EMAIL_FROM: str = "OttoAI <ottoai@happpening.com>"

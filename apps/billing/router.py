@@ -16,6 +16,7 @@ from core.security import get_current_user
 from apps.auth.models import User
 from apps.billing import service
 from apps.billing import razorpay_service
+from apps.billing import google_play_service
 from apps.usage import service as usage_service
 
 logger = logging.getLogger(__name__)
@@ -164,4 +165,57 @@ async def razorpay_webhook(
         logger.error("Razorpay webhook '%s' failed: %s", event_type, e)
 
     # Acknowledge receipt regardless — we've logged failures for replay.
+    return {"status": "ok"}
+
+
+# ── Google Play (Android in-app subscriptions) ────────────────────────────
+
+class GooglePlayVerifyRequest(BaseModel):
+    # The purchaseToken from the completed Play Billing purchase. The plan is
+    # derived server-side from Google's response, not trusted from the client.
+    purchase_token: str
+    product_id: str | None = None  # informational only
+
+
+@router.post("/google-play/verify", response_model=EntitlementResponse)
+def google_play_verify(
+    data: GooglePlayVerifyRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Verify a Play purchase token and grant entitlement to the caller.
+
+    The app calls this right after the in-app purchase completes. Entitlement
+    is granted only if Google confirms the subscription is active.
+    """
+    return google_play_service.verify_and_activate(db, user, data.purchase_token)
+
+
+@router.post("/google-play/rtdn")
+async def google_play_rtdn(
+    request: Request,
+    token: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Google Play Real-Time Developer Notifications via Pub/Sub push.
+
+    Configure the Pub/Sub push endpoint as
+    `…/billing/google-play/rtdn?token=<GOOGLE_PLAY_RTDN_VERIFICATION_TOKEN>`
+    so only Google's push can reach it. Always returns 200 so Pub/Sub stops
+    redelivering a poison message (failures are logged for replay).
+    """
+    expected = settings.GOOGLE_PLAY_RTDN_VERIFICATION_TOKEN
+    if expected and token != expected:
+        raise HTTPException(status_code=403, detail="Invalid RTDN token")
+
+    try:
+        envelope = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid payload")
+
+    try:
+        google_play_service.handle_rtdn(db, envelope)
+    except Exception as e:  # noqa: BLE001 — never make Pub/Sub retry forever
+        logger.error("Google Play RTDN handling failed: %s", e)
+
     return {"status": "ok"}

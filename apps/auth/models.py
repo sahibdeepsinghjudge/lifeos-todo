@@ -44,6 +44,12 @@ class User(Base):
     razorpay_subscription_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True, index=True
     )
+    # Google Play: the latest subscription purchase token for this user. It is
+    # stable across auto-renewals, so RTDN events (which carry only the token)
+    # can be mapped back to the user here.
+    google_play_purchase_token: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
+    )
     # When we last emailed this user that their subscription is about to
     # expire, so the daily job never double-sends within the same cycle.
     expiry_reminder_sent_at: Mapped[datetime | None] = mapped_column(nullable=True)
