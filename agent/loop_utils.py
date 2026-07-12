@@ -42,6 +42,32 @@ def is_terminal_response(tool_calls: list[dict]) -> bool:
     return names.isdisjoint(READ_TOOLS)
 
 
+async def announce_created_reminders(tool_name: str, parsed: dict, user_id: int) -> None:
+    """Tell the app when a tool created reminder(s) so it can show its
+    "Reminder added" popup. Best-effort — never breaks the turn."""
+    if not isinstance(parsed, dict):
+        return
+    if tool_name == "create_todo" and parsed.get("is_reminder"):
+        titles = [parsed.get("title") or ""]
+    elif tool_name == "apply_todo_changes":
+        titles = [t for t in (parsed.get("reminders") or []) if isinstance(t, str)]
+    else:
+        return
+    for title in titles:
+        try:
+            await manager.send_personal_message(
+                {
+                    "type": "data_changed",
+                    "entity": "reminder",
+                    "action": "created",
+                    "title": title,
+                },
+                user_id,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to announce created reminder to user %s", user_id)
+
+
 async def execute_terminal_and_summarize(
     tool_calls: list[dict],
     db: Session,
@@ -91,6 +117,9 @@ async def execute_terminal_and_summarize(
             parsed = json.loads(result)
         except (json.JSONDecodeError, TypeError):
             parsed = {}
+
+        if status == "success":
+            await announce_created_reminders(tool_name, parsed, user_id)
 
         if tool_name == "apply_todo_changes":
             for k, v in (parsed.get("counts") or {}).items():
@@ -279,6 +308,10 @@ async def handle_tool_calls(
             result = await asyncio.to_thread(handle_tool_call, tool_name, arguments, db, user_id)
             if tool_name != "ask_user_question":
                 await manager.send_personal_message({"type": "tool_complete", "tool": tool_name, "status": "success"}, user_id)
+            try:
+                await announce_created_reminders(tool_name, json.loads(result), user_id)
+            except (json.JSONDecodeError, TypeError):
+                pass
         except Exception as e:
             logger.error("Tool '%s' failed: %s (args=%s)", tool_name, e, arguments)
             result = json.dumps({"error": f"Tool '{tool_name}' failed: {str(e)}"})

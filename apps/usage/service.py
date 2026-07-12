@@ -40,6 +40,32 @@ def record_usage(
         db.rollback()
 
 
+def record_streak(db: Session, user_id: int) -> None:
+    """Add one streak point for an AI interaction. Best-effort.
+
+    Continuity is daily (IST): missing a full calendar day breaks the streak.
+    The break is applied lazily here — the old count moves to streak_prev and
+    the new streak starts at this interaction.
+    """
+    from apps.auth.models import User
+
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return
+        today = datetime.now(IST).date()
+        last = user.streak_last_date
+        if last is not None and (today - last).days > 1:
+            user.streak_prev = user.streak_count
+            user.streak_count = 0
+        user.streak_count += 1
+        user.streak_last_date = today
+        db.commit()
+    except Exception as e:  # noqa: BLE001 — streaks must not sink the request
+        logger.warning("Failed to record streak for user %s: %s", user_id, e)
+        db.rollback()
+
+
 def totals(db: Session) -> dict:
     """Overall token + turn counts across all users."""
     row = db.query(

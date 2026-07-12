@@ -49,6 +49,11 @@ class UserResponse(BaseModel):
     email_verified: bool = True
     subscription_status: str = "none"
     subscription_plan: str | None = None
+    # Daily-use streak. While broken, streak_count still holds the frozen
+    # previous streak (reset happens lazily on the next AI interaction).
+    streak_count: int = 0
+    streak_prev: int = 0
+    streak_is_broken: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

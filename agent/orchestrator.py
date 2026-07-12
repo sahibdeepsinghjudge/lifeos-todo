@@ -66,6 +66,9 @@ async def run_agent_async(db: Session, user_id: int, user_message: str):
     # Persist this turn's token usage for per-customer metering / admin.
     usage_service.record_usage(db, user_id, model_name, turn_usage)
 
+    # Every AI interaction earns a streak point (shown in Settings).
+    usage_service.record_streak(db, user_id)
+
     await manager.send_personal_message({
         "type": "usage",
         "agents": [f"router ({light_model})", f"assistant ({model_name})"],

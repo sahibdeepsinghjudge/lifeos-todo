@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
-from sqlalchemy import String, Boolean
+from sqlalchemy import String, Boolean, Date, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.config import IST
@@ -47,7 +47,22 @@ class User(Base):
     # When we last emailed this user that their subscription is about to
     # expire, so the daily job never double-sends within the same cycle.
     expiry_reminder_sent_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # Daily-use streak: +1 point per AI interaction, but continuity is daily —
+    # a full calendar day (IST) with no interaction breaks the streak. The
+    # reset happens lazily on the next interaction (see usage.record_streak),
+    # so while broken, streak_count still holds the frozen previous streak.
+    streak_count: Mapped[int] = mapped_column(Integer, default=0)
+    streak_prev: Mapped[int] = mapped_column(Integer, default=0)
+    streak_last_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(IST)
     )
+
+    @property
+    def streak_is_broken(self) -> bool:
+        """True when an earned streak has gone cold — no AI interaction
+        yesterday or today (IST). Read by UserResponse via from_attributes."""
+        if self.streak_last_date is None or self.streak_count <= 0:
+            return False
+        return self.streak_last_date < datetime.now(IST).date() - timedelta(days=1)
 

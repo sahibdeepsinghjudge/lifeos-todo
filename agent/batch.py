@@ -58,9 +58,14 @@ def _run(db: Session, user_id: int, tool: str, args: dict) -> tuple[bool, dict]:
 
 
 def apply_changes(db: Session, user_id: int, batch: dict) -> dict:
-    """Apply a batch of todo changes. Returns {"counts": {...}, "errors": [...]}."""
+    """Apply a batch of todo changes.
+
+    Returns {"counts": {...}, "errors": [...], "reminders": [titles]} — the
+    reminder titles let the ws layer announce them to the app.
+    """
     counts = dict(_ZERO_COUNTS)
     errors: list[str] = []
+    reminders: list[str] = []
 
     def note_error(msg: str, res: dict) -> None:
         errors.append(f"{msg}: {res.get('error', 'failed')}")
@@ -77,6 +82,8 @@ def apply_changes(db: Session, user_id: int, batch: dict) -> dict:
             note_error(f"create '{item.get('title', '?')}'", res)
             continue
         counts["created"] += 1
+        if res.get("is_reminder"):
+            reminders.append(res.get("title") or item.get("title") or "")
         todo_id = res.get("id")
         if recurrence and todo_id:
             r = dict(recurrence)
@@ -158,7 +165,7 @@ def apply_changes(db: Session, user_id: int, batch: dict) -> dict:
         else:
             note_error(f"delete note '{tag}'", res)
 
-    return {"counts": counts, "errors": errors}
+    return {"counts": counts, "errors": errors, "reminders": reminders}
 
 
 def summarize_counts(counts: dict, errors: list[str]) -> str:

@@ -46,7 +46,16 @@ def handle_tool_call(tool_name: str, arguments: dict, db: Session, user_id: int)
         for tag_name in tag_names or []:
             tag = tag_service.get_or_create_tag(db, user_id, tag_name)
             todo_service.add_tag_to_todo(db, user_id, todo.id, tag.id)
-        return json.dumps({"id": todo.id, "title": todo.title, "status": "created"})
+        # is_reminder rides along so the ws layer can announce new reminders
+        # to the app (which shows its "Reminder added" popup).
+        return json.dumps(
+            {
+                "id": todo.id,
+                "title": todo.title,
+                "status": "created",
+                "is_reminder": bool(todo.is_reminder),
+            }
+        )
 
     elif tool_name == "create_subtask":
         parent_id = arguments["parent_todo_id"]
