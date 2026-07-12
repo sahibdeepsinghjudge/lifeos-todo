@@ -10,7 +10,7 @@ from agent.prompts import ROUTER_PROMPT
 
 logger = logging.getLogger(__name__)
 
-from config import AI_PROVIDER, GROQ_LIGHT_MODEL, GROQ_MODEL, GEMINI_LIGHT_MODEL, GEMINI_MODEL
+from core.config import AI_PROVIDER, GROQ_LIGHT_MODEL, GROQ_MODEL, GEMINI_LIGHT_MODEL, GEMINI_MODEL
 
 if AI_PROVIDER == "groq":
     heavy_model = GROQ_MODEL
