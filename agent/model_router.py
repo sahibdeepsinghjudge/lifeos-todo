@@ -10,14 +10,14 @@ from agent.prompts import ROUTER_PROMPT
 
 logger = logging.getLogger(__name__)
 
-from core.config import AI_PROVIDER, GROQ_LIGHT_MODEL, GROQ_MODEL, GEMINI_LIGHT_MODEL, GEMINI_MODEL
-
-if AI_PROVIDER == "groq":
-    heavy_model = GROQ_MODEL
-    light_model = GROQ_LIGHT_MODEL
+from core.config import settings
+    
+if settings.AI_PROVIDER == "groq":
+    heavy_model = settings.GROQ_MODEL
+    light_model = settings.GROQ_LIGHT_MODEL
 else:
-    heavy_model = GEMINI_MODEL
-    light_model = GEMINI_LIGHT_MODEL
+    heavy_model = settings.GEMINI_MODEL
+    light_model = settings.GEMINI_LIGHT_MODEL
 
 async def choose_model(
     client: AsyncOpenAI,
