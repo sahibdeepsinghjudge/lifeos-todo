@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 async def run_agent_async(db: Session, user_id: int, user_message: str):
     """Main entry point — retrieve the user's data, then run the assistant."""
     client, heavy_model, light_model = get_client()
-    enrichment_client, enrichment_heavy_model, enrichment_light_model = get_enrichment_client()
+    enrichment_client = get_enrichment_client()[0]
 
     session = get_or_create_session(db, user_id)
     store_message(db, session.id, "user", user_message)
@@ -33,9 +33,7 @@ async def run_agent_async(db: Session, user_id: int, user_message: str):
 
     # A tiny classifier on the cheapest model decides which model runs the turn:
     # light for questions/chat/small edits, heavy for complex planning.
-    model_name, route_usage = await choose_model(
-        enrichment_client, user_message, enrichment_light_model, enrichment_heavy_model
-    )
+    model_name, route_usage = await choose_model(enrichment_client, user_message)
 
     await manager.send_personal_message({"type": "status", "message": "Thinking..."}, user_id)
 

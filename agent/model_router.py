@@ -10,12 +10,18 @@ from agent.prompts import ROUTER_PROMPT
 
 logger = logging.getLogger(__name__)
 
+from config import AI_PROVIDER, GROQ_LIGHT_MODEL, GROQ_MODEL, GEMINI_LIGHT_MODEL, GEMINI_MODEL
+
+if AI_PROVIDER == "groq":
+    heavy_model = GROQ_MODEL
+    light_model = GROQ_LIGHT_MODEL
+else:
+    heavy_model = GEMINI_MODEL
+    light_model = GEMINI_LIGHT_MODEL
 
 async def choose_model(
     client: AsyncOpenAI,
     user_message: str,
-    light_model: str,
-    heavy_model: str,
 ) -> tuple[str, dict]:
     """Classify the turn on the cheapest model and return (model_name, usage).
 
@@ -28,7 +34,7 @@ async def choose_model(
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     try:
         resp = await client.chat.completions.create(
-            model=light_model,
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": ROUTER_PROMPT},
                 {"role": "user", "content": user_message},
