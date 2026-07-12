@@ -39,13 +39,13 @@ async def choose_model(
     except Exception as e:  # noqa: BLE001 — routing must not sink the turn
         logger.warning("Model router failed, defaulting to light model: %s", e)
         return light_model, usage
-
-    if resp.usage:
-        usage["prompt_tokens"] = resp.usage.prompt_tokens or 0
-        usage["completion_tokens"] = resp.usage.completion_tokens or 0
-        usage["total_tokens"] = resp.usage.total_tokens or (
-            usage["prompt_tokens"] + usage["completion_tokens"]
-        )
+    # NOT UPDATING THE USAGE FOR THE ROUTER
+    # if resp.usage:
+    #     usage["prompt_tokens"] = resp.usage.prompt_tokens or 0
+    #     usage["completion_tokens"] = resp.usage.completion_tokens or 0
+    #     usage["total_tokens"] = resp.usage.total_tokens or (
+    #         usage["prompt_tokens"] + usage["completion_tokens"]
+    #     )
 
     choice = (resp.choices[0].message.content or "").strip().upper()
     model_name = heavy_model if choice.startswith("H") else light_model

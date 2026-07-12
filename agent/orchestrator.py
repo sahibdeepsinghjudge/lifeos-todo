@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from core.config import IST
-from agent.llm import get_client
+from agent.llm import get_client, get_enrichment_client
 from agent.model_router import choose_model
 from agent.context import build_user_context
 from agent.db_ops import get_or_create_session, get_recent_messages, store_message
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 async def run_agent_async(db: Session, user_id: int, user_message: str):
     """Main entry point — retrieve the user's data, then run the assistant."""
     client, heavy_model, light_model = get_client()
+    enrichment_client, enrichment_heavy_model, enrichment_light_model = get_enrichment_client()
 
     session = get_or_create_session(db, user_id)
     store_message(db, session.id, "user", user_message)
@@ -33,7 +34,7 @@ async def run_agent_async(db: Session, user_id: int, user_message: str):
     # A tiny classifier on the cheapest model decides which model runs the turn:
     # light for questions/chat/small edits, heavy for complex planning.
     model_name, route_usage = await choose_model(
-        client, user_message, light_model, heavy_model
+        enrichment_client, user_message, enrichment_light_model, enrichment_heavy_model
     )
 
     await manager.send_personal_message({"type": "status", "message": "Thinking..."}, user_id)
