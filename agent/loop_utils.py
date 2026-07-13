@@ -174,24 +174,15 @@ async def call_model_stream(
     session_id: int,
     user_id: int,
 ) -> ModelResponse:
-    """Call the LLM, stream the response, and parse tool calls or final text."""
-    try:
-        stream = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            tools=TOOLS,
-            tool_choice="auto",
-            stream=True,
-            # Gemini's OpenAI-compat layer only reports token counts when this
-            # is set; Groq either honours it or ignores it harmlessly.
-            stream_options={"include_usage": True},
-        )
-    except Exception as e:
-        logger.error("Agent call failed: %s", e)
-        error_msg = "Something went wrong parsing the request. Please try again."
-        await send_final(db, session_id, user_id, error_msg)
-        return ModelResponse(final_text=error_msg, assistant_message={}, tool_calls=[], streamed_message_id=None)
+    """Call the LLM, stream the response, and parse tool calls or final text.
 
+    Providers can abort mid-stream — notably Groq's llama models sometimes
+    hallucinate Meta's built-in tools (brave_search, python) on general
+    questions, which fails Groq's "not in request.tools" validation. That
+    error must never reach the user raw: if nothing streamed yet, retry once
+    WITHOUT tools so the model just answers in text; if partial text already
+    streamed, finalize what we have.
+    """
     buffers: dict[int, ToolCallBuffer] = {}
     content_buf = ""
     is_tool_call = False
@@ -206,39 +197,76 @@ async def call_model_stream(
     # the running total once after the stream.
     call_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-    async for chunk in stream:
-        if getattr(chunk, "usage", None):
-            cu = chunk.usage
-            call_usage["prompt_tokens"] = cu.prompt_tokens or 0
-            call_usage["completion_tokens"] = cu.completion_tokens or 0
-            call_usage["total_tokens"] = cu.total_tokens or (
-                call_usage["prompt_tokens"] + call_usage["completion_tokens"]
+    stream_error: Exception | None = None
+    for attempt_tools in (True, False):
+        # A failed first attempt may have buffered a partial hallucinated tool
+        # call — discard it, but keep any streamed text (it's already on the
+        # user's screen).
+        buffers.clear()
+        is_tool_call = False
+        stream_error = None
+        try:
+            kwargs: dict = {
+                "model": model,
+                "messages": messages,
+                "stream": True,
+                # Gemini's OpenAI-compat layer only reports token counts when
+                # this is set; Groq either honours it or ignores it harmlessly.
+                "stream_options": {"include_usage": True},
+            }
+            if attempt_tools:
+                kwargs["tools"] = TOOLS
+                kwargs["tool_choice"] = "auto"
+            stream = await client.chat.completions.create(**kwargs)
+
+            async for chunk in stream:
+                if getattr(chunk, "usage", None):
+                    cu = chunk.usage
+                    call_usage["prompt_tokens"] = cu.prompt_tokens or 0
+                    call_usage["completion_tokens"] = cu.completion_tokens or 0
+                    call_usage["total_tokens"] = cu.total_tokens or (
+                        call_usage["prompt_tokens"] + call_usage["completion_tokens"]
+                    )
+
+                if not chunk.choices:
+                    continue
+
+                delta = chunk.choices[0].delta
+
+                if delta.tool_calls:
+                    is_tool_call = True
+                    for tc in delta.tool_calls:
+                        buf = buffers.setdefault(
+                            tc.index,
+                            ToolCallBuffer(id=tc.id or "", name=tc.function.name or "")
+                        )
+                        buf.append(tc.function.arguments)
+                elif delta.content:
+                    content_buf += delta.content
+                    if not msg_id_sent:
+                        msg_obj = store_message(db, session_id, "assistant", "")
+                        msg_id = msg_obj.id
+                        msg_id_sent = True
+                        await manager.send_personal_message({
+                            "type": "message",
+                            "message": {"id": msg_id, "role": "assistant", "content": "", "created_at": msg_obj.created_at.isoformat()},
+                        }, user_id)
+                    await manager.send_personal_message({"type": "message_chunk", "id": msg_id, "content": delta.content}, user_id)
+        except Exception as e:  # noqa: BLE001 — provider errors must not reach the user raw
+            stream_error = e
+            logger.error(
+                "Agent stream failed (tools=%s): %s", attempt_tools, e
             )
+            if attempt_tools and not content_buf:
+                # Likely a hallucinated-tool validation abort — one clean
+                # retry with tools stripped lets the model answer in text.
+                continue
+        break
 
-        if not chunk.choices:
-            continue
-
-        delta = chunk.choices[0].delta
-
-        if delta.tool_calls:
-            is_tool_call = True
-            for tc in delta.tool_calls:
-                buf = buffers.setdefault(
-                    tc.index,
-                    ToolCallBuffer(id=tc.id or "", name=tc.function.name or "")
-                )
-                buf.append(tc.function.arguments)
-        elif delta.content:
-            content_buf += delta.content
-            if not msg_id_sent:
-                msg_obj = store_message(db, session_id, "assistant", "")
-                msg_id = msg_obj.id
-                msg_id_sent = True
-                await manager.send_personal_message({
-                    "type": "message",
-                    "message": {"id": msg_id, "role": "assistant", "content": "", "created_at": msg_obj.created_at.isoformat()},
-                }, user_id)
-            await manager.send_personal_message({"type": "message_chunk", "id": msg_id, "content": delta.content}, user_id)
+    if stream_error is not None and not content_buf:
+        error_msg = "Something went wrong on my end. Please try again."
+        await send_final(db, session_id, user_id, error_msg)
+        return ModelResponse(final_text=error_msg, assistant_message={}, tool_calls=[], streamed_message_id=None)
 
     usage["prompt_tokens"] += call_usage["prompt_tokens"]
     usage["completion_tokens"] += call_usage["completion_tokens"]
