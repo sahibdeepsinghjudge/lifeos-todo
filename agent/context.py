@@ -47,8 +47,8 @@ def _format_bucket(title: str, todos: list[Todo]) -> str:
     return "\n".join(lines)
 
 
-def build_user_context(db: Session, user_id: int, user_prefs: str | None) -> str:
-    """Build the grounding block injected into the assistant's system prompt."""
+def build_todo_context(db: Session, user_id: int) -> str:
+    """The task-list snapshot: open todos bucketed by urgency, plus tags."""
     now = datetime.now(IST).replace(tzinfo=None)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
@@ -78,14 +78,53 @@ def build_user_context(db: Session, user_id: int, user_prefs: str | None) -> str
     if tags:
         sections.append("Existing tags: " + ", ".join(t.name for t in tags))
 
-    if user_prefs:
-        try:
-            prefs = json.loads(user_prefs)
-            if prefs:
-                lines = ["Saved user preferences:"]
-                lines += [f"  - {k}: {v}" for k, v in prefs.items()]
-                sections.append("\n".join(lines))
-        except json.JSONDecodeError:
-            sections.append(f"Saved user preferences: {user_prefs}")
+    return "\n\n".join(sections)
+
+
+def build_prefs_context(user_prefs: str | None) -> str | None:
+    """The saved-preferences block, or None when there's nothing saved."""
+    if not user_prefs:
+        return None
+    try:
+        prefs = json.loads(user_prefs)
+    except json.JSONDecodeError:
+        return f"Saved user preferences: {user_prefs}"
+    if not prefs:
+        return None
+    lines = ["Saved user preferences:"]
+    lines += [f"  - {k}: {v}" for k, v in prefs.items()]
+    return "\n".join(lines)
+
+
+def build_user_context(
+    db: Session,
+    user_id: int,
+    user_prefs: str | None,
+    *,
+    include_todos: bool = True,
+    include_prefs: bool = True,
+) -> str:
+    """Build the grounding block injected into the assistant's system prompt.
+
+    Only the parts the turn needs (per the router's classification) are loaded
+    and serialized — a greeting or research question skips the task list
+    entirely, which is where most of the prompt tokens used to go. The prompt
+    tells the model how to recover (list_todos) if a part is missing but turns
+    out to be needed.
+    """
+    sections: list[str] = []
+
+    if include_todos:
+        sections.append(build_todo_context(db, user_id))
+    else:
+        sections.append(
+            "Task list not loaded for this turn. If the user asks about their "
+            "tasks or wants any change, call list_todos first."
+        )
+
+    if include_prefs:
+        prefs_block = build_prefs_context(user_prefs)
+        if prefs_block:
+            sections.append(prefs_block)
 
     return "\n\n".join(sections)

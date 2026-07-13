@@ -19,17 +19,31 @@ else:
     heavy_model = settings.GEMINI_MODEL
     light_model = settings.GEMINI_LIGHT_MODEL
 
+class ContextNeeds:
+    """Which parts of the user's data this turn needs in the prompt."""
+
+    def __init__(self, todos: bool, prefs: bool):
+        self.todos = todos
+        self.prefs = prefs
+
+    @classmethod
+    def everything(cls) -> "ContextNeeds":
+        """The fail-open default — matches the old always-load behaviour."""
+        return cls(todos=True, prefs=True)
+
+
 async def choose_model(
     client: AsyncOpenAI,
     user_message: str,
-) -> tuple[str, dict]:
-    """Classify the turn on the cheapest model and return (model_name, usage).
+) -> tuple[str, "ContextNeeds", dict]:
+    """Classify the turn on the cheapest model.
 
-    A single, tiny, non-streaming call on the light model decides whether the
-    turn needs the heavy model. Fails open to the light model — a routing
-    hiccup must never block the turn, and the cheaper model is the safe default.
-    The returned usage is folded into the turn's totals by the caller so the
-    router's handful of tokens are still metered.
+    Returns (model_name, context_needs, usage). One tiny, non-streaming call
+    decides both which model runs the turn AND which user data to load into
+    the prompt — fragmenting the context costs zero extra requests.
+
+    Fails open to (light model, full context) — a routing hiccup must never
+    block the turn or starve it of data; token saving is best-effort.
     """
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     try:
@@ -40,11 +54,11 @@ async def choose_model(
                 {"role": "user", "content": user_message},
             ],
             temperature=0,
-            max_tokens=4,
+            max_tokens=6,
         )
     except Exception as e:  # noqa: BLE001 — routing must not sink the turn
-        logger.warning("Model router failed, defaulting to light model: %s", e)
-        return light_model, usage
+        logger.warning("Model router failed, defaulting to light+full: %s", e)
+        return light_model, ContextNeeds.everything(), usage
     # NOT UPDATING THE USAGE FOR THE ROUTER
     # if resp.usage:
     #     usage["prompt_tokens"] = resp.usage.prompt_tokens or 0
@@ -55,5 +69,16 @@ async def choose_model(
 
     choice = (resp.choices[0].message.content or "").strip().upper()
     model_name = heavy_model if choice.startswith("H") else light_model
-    logger.info("Router chose %s (raw=%r)", model_name, choice)
-    return model_name, usage
+
+    # Context letters: T tasks, P prefs, N none. An answer with no recognised
+    # letters means the classifier went off-script — fail open to everything.
+    if any(c in choice for c in "TPN"):
+        needs = ContextNeeds(todos="T" in choice, prefs="P" in choice)
+    else:
+        needs = ContextNeeds.everything()
+
+    logger.info(
+        "Router chose %s, context todos=%s prefs=%s (raw=%r)",
+        model_name, needs.todos, needs.prefs, choice,
+    )
+    return model_name, needs, usage

@@ -35,6 +35,7 @@ async def run_assistant(
     current_time_str: str,
     user_context: str,
     model_name: str,
+    conversation_summary: str | None = None,
 ) -> dict:
     """Run the assistant loop until it produces a final text reply.
 
@@ -43,9 +44,16 @@ async def run_assistant(
     """
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
+    summary_block = (
+        "\nConversation so far (older messages, summarized):\n"
+        f"{conversation_summary}\n"
+        if conversation_summary
+        else ""
+    )
     system_prompt = ASSISTANT_PROMPT.format(
         current_date=current_time_str,
         user_context=user_context,
+        conversation_summary=summary_block,
     )
 
     messages: list[dict] = [{"role": "system", "content": system_prompt}] + history

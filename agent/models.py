@@ -17,6 +17,11 @@ class ChatSession(Base):
         default=lambda: datetime.now(IST),
         onupdate=lambda: datetime.now(IST),
     )
+    # Rolling summary of everything older than the recent tail, so a turn's
+    # prompt carries "summary + last few messages" instead of the whole chat.
+    # `summary_upto_message_id` marks the last message folded into the summary.
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_upto_message_id: Mapped[int | None] = mapped_column(nullable=True)
 
     messages: Mapped[list["ChatMessage"]] = relationship(back_populates="session", lazy="selectin")
 

@@ -23,13 +23,23 @@ def get_or_create_session(db: Session, user_id: int) -> ChatSession:
     return session
 
 
-def get_recent_messages(db: Session, session_id: int, limit: int = 40) -> list[dict]:
-    """Load last N messages formatted for OpenAI API (flattened, no native tool messages)."""
+def get_history_for_prompt(db: Session, session: ChatSession) -> list[dict]:
+    """The prompt tail: recent messages NOT yet folded into the session's
+    rolling summary, formatted for the OpenAI API.
+
+    Everything older lives in `session.summary` (injected into the system
+    prompt), so a turn carries "summary + short tail" instead of the whole
+    chat — the tail cap also bounds legacy sessions until the summarizer
+    catches up at end of turn.
+    """
+    from agent.summarizer import KEEP_RECENT
+
+    since = session.summary_upto_message_id or 0
     messages_db = (
         db.query(ChatMessage)
-        .filter(ChatMessage.session_id == session_id)
-        .order_by(ChatMessage.created_at.desc())
-        .limit(limit)
+        .filter(ChatMessage.session_id == session.id, ChatMessage.id > since)
+        .order_by(ChatMessage.id.desc())
+        .limit(KEEP_RECENT)
         .all()
     )
     messages_db.reverse()  # Chronological order
