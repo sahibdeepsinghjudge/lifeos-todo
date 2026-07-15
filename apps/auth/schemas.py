@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -49,11 +49,14 @@ class UserResponse(BaseModel):
     email_verified: bool = True
     subscription_status: str = "none"
     subscription_plan: str | None = None
-    # Daily-use streak. While broken, streak_count still holds the frozen
-    # previous streak (reset happens lazily on the next AI interaction).
+    # Daily-use streak: one point per calendar day (IST) with AI usage.
+    # While broken, streak_count still holds the frozen previous streak
+    # (reset happens lazily on the next AI interaction). streak_last_date
+    # lets the client render which recent days are part of the streak.
     streak_count: int = 0
     streak_prev: int = 0
     streak_is_broken: bool = False
+    streak_last_date: date | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

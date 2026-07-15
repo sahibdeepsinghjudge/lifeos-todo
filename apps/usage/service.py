@@ -41,11 +41,12 @@ def record_usage(
 
 
 def record_streak(db: Session, user_id: int) -> None:
-    """Add one streak point for an AI interaction. Best-effort.
+    """Advance the daily streak. Best-effort.
 
-    Continuity is daily (IST): missing a full calendar day breaks the streak.
-    The break is applied lazily here — the old count moves to streak_prev and
-    the new streak starts at this interaction.
+    One point per calendar day (IST): the first AI interaction of the day
+    earns it, later interactions that day are no-ops. Missing a full calendar
+    day breaks the streak — applied lazily here: the old count moves to
+    streak_prev and a new streak starts at 1.
     """
     from apps.auth.models import User
 
@@ -55,6 +56,8 @@ def record_streak(db: Session, user_id: int) -> None:
             return
         today = datetime.now(IST).date()
         last = user.streak_last_date
+        if last == today:
+            return
         if last is not None and (today - last).days > 1:
             user.streak_prev = user.streak_count
             user.streak_count = 0

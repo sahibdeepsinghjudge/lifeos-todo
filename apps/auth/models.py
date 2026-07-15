@@ -53,10 +53,11 @@ class User(Base):
     # When we last emailed this user that their subscription is about to
     # expire, so the daily job never double-sends within the same cycle.
     expiry_reminder_sent_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    # Daily-use streak: +1 point per AI interaction, but continuity is daily —
-    # a full calendar day (IST) with no interaction breaks the streak. The
-    # reset happens lazily on the next interaction (see usage.record_streak),
-    # so while broken, streak_count still holds the frozen previous streak.
+    # Daily-use streak: one point per calendar day (IST) with at least one AI
+    # interaction. A full calendar day with no interaction breaks the streak.
+    # The reset happens lazily on the next interaction (see
+    # usage.record_streak), so while broken, streak_count still holds the
+    # frozen previous streak.
     streak_count: Mapped[int] = mapped_column(Integer, default=0)
     streak_prev: Mapped[int] = mapped_column(Integer, default=0)
     streak_last_date: Mapped[date | None] = mapped_column(Date, nullable=True)
