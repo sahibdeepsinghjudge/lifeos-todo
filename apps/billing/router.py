@@ -25,11 +25,28 @@ router = APIRouter(prefix="/billing", tags=["Billing"])
 
 
 class EntitlementResponse(BaseModel):
-    status: str  # none | trial | active | expired
+    status: str  # none | trial | active | cancelled | expired | free
     plan: str | None
     expires_at: datetime | None
     trial_available: bool
     is_entitled: bool
+    # False while the app is in free-access mode (settings.BILLING_ENABLED
+    # off) — the client shows the early-access screen instead of a paywall.
+    billing_enabled: bool = True
+
+
+def require_billing_enabled() -> None:
+    """Block purchase flows while the app is in free-access mode.
+
+    Without this a stale client could still call start-trial/subscribe and
+    burn a user's one-time free trial during a period when everything is
+    supposed to be free.
+    """
+    if not settings.BILLING_ENABLED:
+        raise HTTPException(
+            status_code=403,
+            detail="OttoAI is currently free for everyone — no subscription needed.",
+        )
 
 
 class SubscribeRequest(BaseModel):
@@ -42,6 +59,7 @@ class SubscribeRequest(BaseModel):
 @router.get("/plans")
 def get_plans():
     return {
+        "billing_enabled": settings.BILLING_ENABLED,
         "trial_days": settings.TRIAL_DAYS,
         "plans": [
             {
@@ -103,6 +121,7 @@ def get_my_usage(
 def start_trial(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    _: None = Depends(require_billing_enabled),
 ):
     return service.start_trial(db, user)
 
@@ -112,6 +131,7 @@ def subscribe(
     data: SubscribeRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    _: None = Depends(require_billing_enabled),
 ):
     # TODO(play-billing): verify data.purchase_token against the Google Play
     # Developer API before activating, once store products exist. Until then
@@ -130,6 +150,7 @@ def create_razorpay_subscription(
     data: RazorpaySubscribeRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    _: None = Depends(require_billing_enabled),
 ):
     """Create a Razorpay subscription and return its hosted checkout URL.
 
@@ -182,6 +203,7 @@ def google_play_verify(
     data: GooglePlayVerifyRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    _: None = Depends(require_billing_enabled),
 ):
     """Verify a Play purchase token and grant entitlement to the caller.
 

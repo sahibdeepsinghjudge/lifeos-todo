@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     MIN_SUPPORTED_BUILD: int = 1
 
     # Billing
+    # Master switch for paid subscriptions. While False the app is in
+    # free-access mode: every signed-in user is entitled, no paywall is
+    # shown, and the purchase endpoints refuse to run. Nothing is written to
+    # user rows in this mode, so flipping it back to True restores each
+    # user's real state (an unused free trial stays unused).
+    BILLING_ENABLED: bool = False
     TRIAL_DAYS: int = 3
     PRICE_MONTHLY_INR: int = 149
     PRICE_YEARLY_INR: int = 1499

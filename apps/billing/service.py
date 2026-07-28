@@ -37,6 +37,21 @@ def get_entitlement(user: User) -> dict:
     """Compute the user's effective subscription state."""
     now = _now()
 
+    # Free-access mode (BILLING_ENABLED off): everyone is entitled and the
+    # app shows the "early access" screen instead of a paywall. Deliberately
+    # computed, never persisted — no trial is consumed and no subscription
+    # row is touched, so turning billing back on returns every user to the
+    # exact state they were in.
+    if not settings.BILLING_ENABLED:
+        return {
+            "status": "free",
+            "plan": None,
+            "expires_at": None,
+            "trial_available": False,
+            "is_entitled": True,
+            "billing_enabled": False,
+        }
+
     # Paid subscription takes precedence. A cancelled plan stays entitled
     # until the paid-for period ends, but is surfaced as "cancelled" so the
     # app can show "ends on X" instead of "renews on X".
@@ -49,6 +64,7 @@ def get_entitlement(user: User) -> dict:
             "expires_at": user.subscription_expires_at,
             "trial_available": False,
             "is_entitled": True,
+            "billing_enabled": True,
         }
 
     # Trial window.
@@ -61,6 +77,7 @@ def get_entitlement(user: User) -> dict:
                 "expires_at": trial_ends,
                 "trial_available": False,
                 "is_entitled": True,
+                "billing_enabled": True,
             }
         # Trial used up (and no active sub).
         return {
@@ -69,6 +86,7 @@ def get_entitlement(user: User) -> dict:
             "expires_at": None,
             "trial_available": False,
             "is_entitled": False,
+            "billing_enabled": True,
         }
 
     return {
@@ -77,6 +95,7 @@ def get_entitlement(user: User) -> dict:
         "expires_at": None,
         "trial_available": True,
         "is_entitled": False,
+        "billing_enabled": True,
     }
 
 
