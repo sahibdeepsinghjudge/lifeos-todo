@@ -7,10 +7,11 @@ subscriptions, revenue, and per-customer token usage.
 
 from __future__ import annotations
 
+import html as html_lib
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
 
@@ -18,6 +19,7 @@ from core.config import settings
 from core.database import get_db
 from apps.billing import service as billing_service
 from apps.usage import service as usage_service
+from apps.waitlist import service as waitlist_service
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 _security = HTTPBasic()
@@ -115,6 +117,75 @@ def _table(headers: list[str], rows: list[list[str]]) -> str:
     )
 
 
+def _waitlist_table(rows: list) -> str:
+    """Waitlist rows with an inline onboarded toggle.
+
+    A plain form POST rather than fetch(): the browser replays the Basic-auth
+    credentials automatically and it still works with JS disabled.
+    """
+    if not rows:
+        return f'<p style="color:{_C_MUTED};margin:8px 0 0">No requests yet.</p>'
+
+    body = ""
+    for r in rows:
+        onboarded = r.status == "onboarded"
+        pill_bg = f"{_C_OLIVE}22" if onboarded else "rgba(200,140,80,.12)"
+        pill_fg = _C_OLIVE if onboarded else _C_MUTED
+        btn_label = "Mark pending" if onboarded else "Mark onboarded"
+        reason = html_lib.escape(r.reason or "")
+        short = reason if len(reason) <= 140 else reason[:140] + "…"
+        cell = (
+            f'padding:10px 12px;color:{_C_TEXT};font-size:14px;'
+            f'border-top:1px solid rgba(200,140,80,.12);vertical-align:top'
+        )
+        body += (
+            f"<tr>"
+            f'<td style="{cell}">{r.created_at:%d %b}</td>'
+            f'<td style="{cell}">{html_lib.escape(r.name)}</td>'
+            f'<td style="{cell}"><a href="mailto:{html_lib.escape(r.email)}" '
+            f'style="color:{_C_ACCENT};text-decoration:none">'
+            f"{html_lib.escape(r.email)}</a></td>"
+            f'<td style="{cell};max-width:320px" title="{reason}">{short}</td>'
+            f'<td style="{cell}">{html_lib.escape(r.will_help or "—")}</td>'
+            f'<td style="{cell}"><span style="background:{pill_bg};color:{pill_fg};'
+            f'border-radius:100px;padding:3px 10px;font-size:12px;'
+            f'font-weight:600">{r.status}</span></td>'
+            f'<td style="{cell}">'
+            f'<form method="post" action="/admin/waitlist/{r.id}/toggle" '
+            f'style="margin:0">'
+            f'<button type="submit" style="background:transparent;'
+            f"border:1px solid rgba(200,140,80,.35);color:{_C_TEXT};"
+            f'border-radius:100px;padding:6px 12px;font-size:12px;'
+            f'cursor:pointer">{btn_label}</button></form></td>'
+            f"</tr>"
+        )
+
+    head = "".join(
+        f'<th style="text-align:left;padding:10px 12px;color:{_C_MUTED};'
+        f'font-weight:600;font-size:12px;text-transform:uppercase;'
+        f'letter-spacing:.5px">{h}</th>'
+        for h in ["When", "Name", "Email", "Why", "Will help", "Status", ""]
+    )
+    return (
+        f'<table style="width:100%;border-collapse:collapse">'
+        f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+    )
+
+
+@router.post("/waitlist/{request_id}/toggle")
+def toggle_waitlist_status(
+    request_id: int,
+    _admin: str = Depends(_require_admin),
+    db: Session = Depends(get_db),
+):
+    """Flip a waitlist entry between pending and onboarded."""
+    row = waitlist_service.toggle_onboarded(db, request_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Request not found")
+    # 303 so the browser re-issues a GET — a refresh won't re-toggle.
+    return RedirectResponse(url="/admin#waitlist", status_code=303)
+
+
 @router.post("/jobs/expiry-reminders")
 def run_expiry_reminders(
     _admin: str = Depends(_require_admin),
@@ -137,6 +208,8 @@ def dashboard(
     series = usage_service.daily_series(db, days=30)
     top = usage_service.top_users(db, limit=15)
     payments = billing_service.recent_payments(db, limit=20)
+    wl_stats = waitlist_service.stats(db)
+    wl_rows = waitlist_service.list_requests(db, limit=200)
 
     stat_cards = "".join(
         [
@@ -146,6 +219,8 @@ def dashboard(
             _stat("Gross revenue", f'₹{stats["gross_revenue_inr"]:,}'),
             _stat("Total tokens", f'{usage_totals["total_tokens"]:,}'),
             _stat("Agent turns", f'{usage_totals["turns"]:,}'),
+            _stat("Waitlist · pending", f'{wl_stats["pending"]:,}'),
+            _stat("Waitlist · onboarded", f'{wl_stats["onboarded"]:,}'),
         ]
     )
 
@@ -175,6 +250,17 @@ def dashboard(
 
     <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:28px">
       {stat_cards}
+    </div>
+
+    <div id="waitlist" style="background:{_C_CARD};border-radius:16px;
+      padding:20px;margin-bottom:24px">
+      <h2 style="font-size:15px;color:{_C_TEXT};margin:0 0 2px">
+        Early-access waitlist</h2>
+      <p style="color:{_C_MUTED};font-size:13px;margin:0 0 10px">
+        {wl_stats['total']} total · {wl_stats['pending']} pending ·
+        {wl_stats['last_24h']} in the last 24h
+      </p>
+      <div style="overflow-x:auto">{_waitlist_table(wl_rows)}</div>
     </div>
 
     <div style="background:{_C_CARD};border-radius:16px;padding:20px;margin-bottom:24px">

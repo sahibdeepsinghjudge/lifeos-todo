@@ -25,8 +25,13 @@ _INK = "#0A0A0A"
 
 
 def _shell(title: str, body_html: str, cta_label: str | None = None,
-           cta_url: str | None = None) -> str:
-    """Wrap body content in the branded email shell."""
+           cta_url: str | None = None, footer_note: str | None = None) -> str:
+    """Wrap body content in the branded email shell.
+
+    `footer_note` overrides the default "you have an account" line — waitlist
+    mail goes to people who don't have one yet, and telling them otherwise
+    reads like a phishing attempt.
+    """
     cta = ""
     if cta_label and cta_url:
         cta = f"""
@@ -49,7 +54,7 @@ def _shell(title: str, body_html: str, cta_label: str | None = None,
       <tr><td style="font-size:15px;line-height:1.6;color:{_BROWN}">{body_html}</td></tr>
       {cta}
       <tr><td style="padding-top:26px;font-size:12px;color:{_AMBER}">
-        You're receiving this because you have a OttoAI account.<br>
+        {footer_note or "You're receiving this because you have a OttoAI account."}<br>
         © OttoAI · <a href="{settings.WEBSITE_URL}"
           style="color:{_AMBER}">{settings.WEBSITE_URL.replace('https://','')}</a>
       </td></tr>
@@ -157,4 +162,63 @@ def send_subscription_cancelled(to: str, name: str, expires_at) -> bool:
     return send_email(
         to, "Your OttoAI Pro subscription was cancelled",
         _shell("Subscription cancelled", body, "Resubscribe", settings.WEBSITE_URL),
+    )
+
+
+# ── Waitlist ──────────────────────────────────────────────────────────────
+
+_WAITLIST_FOOTER = (
+    "You're receiving this because you asked for early access to OttoAI at "
+    "our website. If that wasn't you, just ignore this email — nothing was "
+    "created and we won't write again."
+)
+
+
+def send_waitlist_confirmation(to: str, name: str) -> bool:
+    """Thank-you auto-reply for a new early-access request."""
+    body = (
+        f"Hi {name or 'there'},<br><br>"
+        "Thanks for joining the OttoAI waitlist — you're on the list.<br><br>"
+        "We're letting people in a few at a time so we can actually answer "
+        "everyone and fix what they run into. When your turn comes up you'll "
+        "get an email from us with the app and a short note on how to start."
+        "<br><br>"
+        "Everyone in early access uses the whole app free — there's nothing "
+        "to buy and no trial counting down.<br><br>"
+        "If you think of anything else you want it to do, just reply to this "
+        "email. We read all of it."
+    )
+    return send_email(
+        to,
+        "You're on the OttoAI waitlist",
+        _shell(
+            "Thanks for joining the waitlist",
+            body,
+            footer_note=_WAITLIST_FOOTER,
+        ),
+    )
+
+
+def send_waitlist_admin_alert(to: str, name: str, email_addr: str,
+                              reason: str, will_help: str) -> bool:
+    """Notify the team that someone asked for access."""
+    import html as _html
+
+    body = (
+        f"<b>Name:</b> {_html.escape(name)}<br>"
+        f"<b>Email:</b> {_html.escape(email_addr)}<br>"
+        f"<b>Will help improve:</b> {_html.escape(will_help) or '—'}<br><br>"
+        f"<b>Why they want in</b><br>"
+        f"{_html.escape(reason).replace(chr(10), '<br>')}"
+    )
+    return send_email(
+        to,
+        f"OttoAI early access — {name}",
+        _shell(
+            "New early-access request",
+            body,
+            "Open admin",
+            f"{settings.WEBSITE_URL.rstrip('/')}/admin",
+            footer_note="Sent to you because you're listed in ADMIN_EMAILS.",
+        ),
     )
